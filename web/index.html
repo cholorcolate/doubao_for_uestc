@@ -201,18 +201,38 @@ svg{display:block}
     if (t) t.remove();
   }
 
+  function srcLine(src){
+    var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9"/><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/></svg>';
+    return '<div class="src-line">' + icon + (src === "知识库未收录" ? "知识库未收录" : "来源：" + src) + "</div>";
+  }
+
+  function localReply(text){
+    var entry = qa[text] || fallback;
+    setTimeout(function(){
+      removeTyping();
+      addMsg("bot", entry.a + srcLine(entry.src));
+    }, 900 + Math.random() * 500);
+  }
+
   function send(text){
     text = text.trim();
     if (!text) return;
     addMsg("user", text.replace(/</g, "&lt;"));
     input.value = "";
     showTyping();
-    var entry = qa[text] || fallback;
-    setTimeout(function(){
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: text })
+    }).then(function(r){
+      if (!r.ok) throw new Error("bad status");
+      return r.json();
+    }).then(function(res){
       removeTyping();
-      var srcHtml = '<div class="src-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9"/><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/></svg>' + (entry.src === "知识库未收录" ? "知识库未收录" : "来源：" + entry.src) + "</div>';
-      addMsg("bot", entry.a + srcHtml);
-    }, 900 + Math.random() * 500);
+      addMsg("bot", res.answer + srcLine(res.source));
+    }).catch(function(){
+      localReply(text);
+    });
   }
 
   sendBtn.addEventListener("click", function(){ send(input.value); });
