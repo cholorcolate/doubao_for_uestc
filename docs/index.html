@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成电智答 · 电子科技大学校园智能体</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap">
+<style>
+:root{
+  --bg:#081224;
+  --bg-soft:#0C1B33;
+  --card:#10213F;
+  --card-2:#14294D;
+  --line:rgba(150,180,228,0.16);
+  --primary:#2D6CDF;
+  --primary-deep:#1B4FA8;
+  --accent:#E8B84B;
+  --cyan:#57C7E4;
+  --text:#EAF1FB;
+  --text-2:#A9B9D2;
+  --text-3:#6E82A6;
+  --serif:'Noto Serif SC','Songti SC','STSong',serif;
+  --sans:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+svg{display:block}
+
+/* ===== 页 ===== */
+.page{position:relative;min-height:100vh;display:flex;flex-direction:column}
+.bg{position:absolute;inset:0;background-image:url('https://aka.doubaocdn.com/s/AueEtGcVEj');background-size:cover;background-position:center 32%;opacity:.6}
+.veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,18,36,0.74) 0%,rgba(8,18,36,0.4) 50%,var(--bg) 100%)}
+.content{position:relative;flex:1;display:flex;flex-direction:column}
+
+/* ===== 顶栏 ===== */
+.bar{display:flex;align-items:center;justify-content:space-between;padding:22px 28px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-weight:700;font-size:19px;letter-spacing:1px}
+.brand .logo{width:28px;height:28px;color:var(--accent)}
+
+/* ===== 主体 ===== */
+.main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 40px;text-align:center}
+.main h1{font-family:var(--serif);font-weight:900;font-size:clamp(30px,4.6vw,46px);letter-spacing:2px}
+.main h1 em{font-style:normal;color:var(--accent)}
+.main .sub{margin-top:12px;color:var(--text-2);font-size:15px;letter-spacing:3px}
+
+/* ===== 聊天卡 ===== */
+.chat-card{width:100%;max-width:640px;margin-top:34px;text-align:left;background:linear-gradient(180deg,rgba(18,35,66,0.94),rgba(13,27,50,0.97));border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.45)}
+.chat-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.chat-head .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 2.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.chat-head .t{font-size:14.5px;font-weight:600}
+.msg-area{height:300px;overflow-y:auto;padding:18px 18px 6px;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin;scrollbar-color:rgba(150,180,228,0.25) transparent}
+.msg{display:flex;gap:10px;max-width:92%}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.msg-avatar{flex:0 0 30px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.msg.user .msg-avatar{background:var(--primary);color:#fff}
+.msg.bot .msg-avatar{background:rgba(232,184,75,0.14);color:var(--accent);border:1px solid rgba(232,184,75,0.3)}
+.msg-avatar svg{width:17px;height:17px}
+.bubble{padding:10px 14px;border-radius:14px;font-size:14px;animation:msgIn .35s ease-out}
+@keyframes msgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.msg.user .bubble{background:var(--primary-deep);border-bottom-right-radius:4px}
+.msg.bot .bubble{background:var(--card-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.src-line{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11.5px;color:var(--text-3)}
+.src-line svg{width:12px;height:12px;color:var(--cyan)}
+.typing{display:inline-flex;gap:5px;padding:6px 2px}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--text-3);animation:blink 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}
+.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.quick-row{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
+.quick{font-size:12.5px;color:var(--text-2);background:rgba(45,108,223,0.12);border:1px solid rgba(45,108,223,0.35);border-radius:999px;padding:7px 14px;transition:all .2s}
+.quick:hover{color:#fff;background:var(--primary);border-color:var(--primary)}
+.input-row{display:flex;align-items:center;gap:10px;padding:12px 14px 16px}
+.input-box{flex:1;display:flex;align-items:center;background:var(--bg-soft);border:1px solid var(--line);border-radius:14px;padding:0 6px 0 16px;transition:border-color .25s,box-shadow .25s}
+.input-box:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px rgba(45,108,223,0.22)}
+.input-box input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14.5px;font-family:inherit;height:42px;min-width:0}
+.input-box input::placeholder{color:var(--text-3)}
+.send-btn{width:44px;height:44px;border:none;border-radius:12px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;transition:background .2s,transform .15s}
+.send-btn:hover{background:#3B7AE8}
+.send-btn:active{transform:scale(.94)}
+.send-btn svg{width:20px;height:20px}
+
+/* ===== 页脚 ===== */
+.foot{padding:20px 24px 28px;text-align:center}
+.foot .motto{font-family:var(--serif);color:var(--text-2);font-size:13px;letter-spacing:4px}
+.foot .note{margin-top:6px;font-size:11.5px;color:var(--text-3)}
+
+@media (max-width:768px){
+  .bar{padding:18px 18px}
+  .main{padding:0 16px 28px}
+  .chat-card{margin-top:26px}
+  .msg-area{height:280px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="bg"></div>
+  <div class="veil"></div>
+  <div class="content">
+
+    <div class="bar">
+      <span class="brand">
+        <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg>
+        成电智答
+      </span>
+    </div>
+
+    <div class="main">
+      <h1>懂成电的<em>智能体</em></h1>
+      <p class="sub">选课 · 保研 · 校历 · 班车</p>
+
+      <div class="chat-card">
+        <div class="chat-head">
+          <span class="dot"></span>
+          <span class="t">成电智答</span>
+        </div>
+        <div class="msg-area" id="msgArea">
+          <div class="msg bot">
+            <span class="msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg></span>
+            <div class="bubble">你好，可以问我校园政策、办事流程这类问题。</div>
+          </div>
+        </div>
+        <div class="quick-row" id="quickRow">
+          <button class="quick" data-q="保研成绩怎么算？">保研成绩怎么算？</button>
+          <button class="quick" data-q="这学期校历安排">这学期校历安排</button>
+          <button class="quick" data-q="清水河到沙河班车时刻">清水河到沙河班车时刻</button>
+        </div>
+        <div class="input-row">
+          <div class="input-box">
+            <input id="chatInput" type="text" placeholder="输入你的问题…" autocomplete="off">
+            <button class="send-btn" id="sendBtn" aria-label="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="motto">求实求真 · 大气大为</div>
+      <div class="note">演示版 · 问答为演示数据</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var qa = {
+    "保研成绩怎么算？": {
+      a: "保研综合成绩一般由学业成绩与综合素质测评构成，不同学院权重可能不同，具体以教务处当年通知为准。",
+      src: "教务处官网（示例）"
+    },
+    "这学期校历安排": {
+      a: "校历页签提供教学周、考试周与假期安排，具体日期以学校官方发布为准。",
+      src: "学校官网 · 校历（示例）"
+    },
+    "清水河到沙河班车时刻": {
+      a: "工作日开行通勤班车，发车时间与站点以后勤保障部最新通知为准。",
+      src: "后勤保障部（示例）"
+    }
+  };
+  var fallback = {
+    a: "这个问题知识库暂未收录，建议去对应部门官网核实。",
+    src: "知识库未收录"
+  };
+
+  var area = document.getElementById("msgArea");
+  var input = document.getElementById("chatInput");
+  var sendBtn = document.getElementById("sendBtn");
+
+  function scrollBottom(){ area.scrollTop = area.scrollHeight; }
+
+  function addMsg(role, html){
+    var wrap = document.createElement("div");
+    wrap.className = "msg " + role;
+    var avatar = role === "user"
+      ? '<span class="msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>'
+      : '<span class="msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg></span>';
+    wrap.innerHTML = avatar + '<div class="bubble">' + html + "</div>";
+    area.appendChild(wrap);
+    scrollBottom();
+  }
+
+  function showTyping(){
+    var wrap = document.createElement("div");
+    wrap.className = "msg bot";
+    wrap.id = "typingMsg";
+    wrap.innerHTML = '<span class="msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg></span>' +
+      '<div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div>';
+    area.appendChild(wrap);
+    scrollBottom();
+  }
+
+  function removeTyping(){
+    var t = document.getElementById("typingMsg");
+    if (t) t.remove();
+  }
+
+  function srcLine(src){
+    var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9"/><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/></svg>';
+    return '<div class="src-line">' + icon + (src === "知识库未收录" ? "知识库未收录" : "来源：" + src) + "</div>";
+  }
+
+  function localReply(text){
+    var entry = qa[text] || fallback;
+    setTimeout(function(){
+      removeTyping();
+      addMsg("bot", entry.a + srcLine(entry.src));
+    }, 900 + Math.random() * 500);
+  }
+
+  function send(text){
+    text = text.trim();
+    if (!text) return;
+    addMsg("user", text.replace(/</g, "&lt;"));
+    input.value = "";
+    showTyping();
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: text })
+    }).then(function(r){
+      if (!r.ok) throw new Error("bad status");
+      return r.json();
+    }).then(function(res){
+      removeTyping();
+      addMsg("bot", res.answer + srcLine(res.source));
+    }).catch(function(){
+      localReply(text);
+    });
+  }
+
+  sendBtn.addEventListener("click", function(){ send(input.value); });
+  input.addEventListener("keydown", function(e){
+    if (e.key === "Enter") send(input.value);
+  });
+  document.getElementById("quickRow").addEventListener("click", function(e){
+    var b = e.target.closest(".quick");
+    if (b) send(b.getAttribute("data-q"));
+  });
+})();
+</script>
+</body>
+</html>
