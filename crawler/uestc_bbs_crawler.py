@@ -11,10 +11,13 @@ import os
 import re
 from urllib.parse import urljoin, urlparse
 import hashlib
+import sys
+import argparse
+from datetime import datetime
 
 
 class UESTCBBSrawler:
-    def __init__(self):
+    def __init__(self, data_dir=None, request_interval=1.0):
         self.base_url = "https://bbs.uestc.edu.cn"
         self.session = requests.Session()
         self.session.headers.update({
@@ -26,7 +29,9 @@ class UESTCBBSrawler:
             "Referer": self.base_url,
         })
         self.logged_in = False
-        self.data_dir = "data"
+        self.data_dir = data_dir or r"C:\soft\opencode_download\uestc-public"
+        self.requestInterval = max(1.0, request_interval)
+        self.lastRequestAt = 0.0
         self._ensure_data_dir()
     
     def _ensure_data_dir(self):
@@ -41,6 +46,7 @@ class UESTCBBSrawler:
         # 获取登录页面
         login_url = f"{self.base_url}/member.php?mod=logging&action=login"
         response = self.session.get(login_url)
+        response.encoding = response.apparent_encoding or "utf-8"
         
         if response.status_code != 200:
             print(f"获取登录页面失败: {response.status_code}")
@@ -72,6 +78,7 @@ class UESTCBBSrawler:
         # 提交登录
         login_submit_url = f"{self.base_url}/member.php?mod=logging&action=login&loginsubmit=yes&handlekey=login"
         response = self.session.post(login_submit_url, data=login_data)
+        response.encoding = response.apparent_encoding or "utf-8"
         
         # 检查登录结果
         if "欢迎您回来" in response.text or username in response.text:
@@ -98,11 +105,20 @@ class UESTCBBSrawler:
         """获取页面内容"""
         for i in range(retries):
             try:
-                response = self.session.get(url, timeout=10)
+                time.sleep(max(0.0, self.requestInterval - (time.monotonic() - self.lastRequestAt)))
+                self.lastRequestAt = time.monotonic()
+                response = self.session.get(url, timeout=10, allow_redirects=False)
+                if response.status_code in (403, 429):
+                    raise PermissionError(f"服务器限制访问，停止抓取：HTTP {response.status_code}")
                 if response.status_code == 200:
+                    # 修复：requests 在 HTTP 头未标明 charset 时会误判为 ISO-8859-1，
+                    # 导致中文乱码、formhash 提取失败，这里改用页面真实编码
+                    response.encoding = response.apparent_encoding or "utf-8"
                     return response.text
                 else:
                     print(f"请求失败: {url}, 状态码: {response.status_code}")
+            except PermissionError:
+                raise
             except Exception as e:
                 print(f"请求异常: {url}, 错误: {e}")
             time.sleep(1)
@@ -164,8 +180,8 @@ class UESTCBBSrawler:
             threadlist = soup.find("div", {"id": "threadlistts"})
         
         if threadlist:
-            # 查找所有帖子行
-            thread_rows = threadlist.find_all("li", {"id": re.compile(r"normalthread_\d+")})
+            # 查找所有帖子行（Discuz 中帖子行是 tbody 标签，id 为 normalthread_xxx）
+            thread_rows = threadlist.find_all(id=re.compile(r"normalthread_\d+"))
             
             for row in thread_rows:
                 thread_id = re.search(r"normalthread_(\d+)", row.get("id", "")).group(1)
@@ -215,72 +231,106 @@ class UESTCBBSrawler:
         
         return threads, has_next
     
-    def parse_thread(self, tid):
-        """解析帖子内容"""
-        url = f"{self.base_url}/forum.php?mod=viewthread&tid={tid}"
-        html = self.get_page(url)
-        if not html:
-            return None
-        
-        soup = BeautifulSoup(html, "html.parser")
-        
-        # 获取帖子标题
-        title_elem = soup.find("span", {"id": "thread_subject"})
-        if not title_elem:
-            title_elem = soup.find("h1")
-        title = title_elem.get_text(strip=True) if title_elem else ""
-        
-        posts = []
-        
-        # 查找所有回复
-        post_list = soup.find_all("div", {"id": re.compile(r"post_\d+")})
-        
-        for post_div in post_list:
-            post_id_match = re.search(r"post_(\d+)", post_div.get("id", ""))
-            if not post_id_match:
-                continue
-            post_id = post_id_match.group(1)
-            
-            # 获取作者
-            author_elem = post_div.find("a", {"class": "xw1"})
-            author = author_elem.get_text(strip=True) if author_elem else ""
-            
-            # 获取时间
-            time_elem = post_div.find("em", {"id": f"authorposton{post_id}"})
-            if not time_elem:
-                time_elem = post_div.find("em", {"id": re.compile(r"authorposton")})
-            post_time = time_elem.get_text(strip=True) if time_elem else ""
-            
-            # 获取内容
-            content_elem = post_div.find("td", {"class": "t_f"})
-            if not content_elem:
-                content_elem = post_div.find("div", {"class": "t_f"})
-            if not content_elem:
-                content_elem = post_div.find("td", {"id": f"postmessage_{post_id}"})
-            content = content_elem.get_text(strip=True) if content_elem else ""
-            
-            # 获取楼层
-            floor_elem = post_div.find("a", {"class": "floor"})
-            if not floor_elem:
-                floor_elem = post_div.find("strong", {"class": "y"})
-            floor = floor_elem.get_text(strip=True) if floor_elem else ""
-            
-            posts.append({
-                "post_id": post_id,
-                "author": author,
-                "time": post_time,
-                "content": content,
-                "floor": floor,
-            })
-        
-        # 获取帖子信息
+    def parse_thread(self, tid, max_pages=50):
+        """解析帖子内容（自动翻页合并所有楼层）"""
+        all_posts = []
+        title = ""
+        seenPostIds = set()
+        complete = False
+        pagesFetched = 0
+
+        for page in range(1, max_pages + 1):
+            url = f"{self.base_url}/forum.php?mod=viewthread&tid={tid}"
+            if page > 1:
+                url += f"&page={page}"
+            html = self.get_page(url)
+            if not html:
+                break
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            # 获取帖子标题（只在第 1 页提取）
+            if page == 1:
+                title_elem = soup.find("span", {"id": "thread_subject"})
+                if not title_elem:
+                    title_elem = soup.find("h1")
+                title = title_elem.get_text(strip=True) if title_elem else ""
+
+            post_list = soup.find_all("div", {"id": re.compile(r"post_\d+")})
+
+            if not post_list:
+                messageElement = soup.find(id="messagetext")
+                message = messageElement.get_text(" ", strip=True) if messageElement else "未找到正文，原因未确定"
+                print(f"主题 {tid} 第 {page} 页未解析到正文：{message[:200]}")
+                if page == 1:
+                    return None
+                break
+            previousCount = len(all_posts)
+            pagesFetched = page
+            for post_div in post_list:
+                post_id_match = re.search(r"post_(\d+)", post_div.get("id", ""))
+                if not post_id_match:
+                    continue
+                post_id = post_id_match.group(1)
+                if post_id in seenPostIds:
+                    continue
+                seenPostIds.add(post_id)
+
+                # 获取作者
+                author_elem = post_div.find("a", {"class": "xw1"})
+                author = author_elem.get_text(strip=True) if author_elem else ""
+
+                # 获取时间
+                time_elem = post_div.find("em", {"id": f"authorposton{post_id}"})
+                if not time_elem:
+                    time_elem = post_div.find("em", {"id": re.compile(r"authorposton")})
+                post_time = time_elem.get_text(strip=True) if time_elem else ""
+
+                # 获取内容
+                content_elem = post_div.find("td", {"class": "t_f"})
+                if not content_elem:
+                    content_elem = post_div.find("div", {"class": "t_f"})
+                if not content_elem:
+                    content_elem = post_div.find("td", {"id": f"postmessage_{post_id}"})
+                content = content_elem.get_text(strip=True) if content_elem else ""
+
+                # 获取楼层
+                floor_elem = post_div.find("a", {"class": "floor"})
+                if not floor_elem:
+                    floor_elem = post_div.find("strong", {"class": "y"})
+                floor = floor_elem.get_text(strip=True) if floor_elem else ""
+
+                all_posts.append({
+                    "post_id": post_id,
+                    "author": author,
+                    "time": post_time,
+                    "content": content,
+                    "floor": floor,
+                })
+
+            # 判断是否还有下一页：帖子页分页在 class="pgs" 容器里
+            pager = soup.find("div", {"class": "pgs"}) or soup.find("div", {"class": "pg"})
+            has_next = bool(pager and pager.find("a", {"class": "nxt"}))
+            if len(all_posts) == previousCount:
+                break
+            if not has_next:
+                complete = True
+                break
+            if page >= max_pages:
+                complete = False
+                break
+            time.sleep(0.3)
+
         thread_info = {
             "tid": tid,
             "title": title,
-            "posts": posts,
-            "total_posts": len(posts),
+            "posts": all_posts,
+            "total_posts": len(all_posts),
+            "complete": complete,
+            "pages_fetched": pagesFetched,
+            "crawled_at": datetime.now().isoformat(timespec="seconds"),
         }
-        
+
         return thread_info
     
     def save_board(self, board_info):
@@ -387,36 +437,118 @@ class UESTCBBSrawler:
                 print(f"\n爬取帖子 {tid}...")
                 self.crawl_thread(tid)
                 time.sleep(0.3)
+    
+    def crawl_all_contents(self, force=False):
+        """批量抓取已发现帖子的完整正文（断点续传：默认跳过已有文件，force 时重抓）"""
+        threads_dir = os.path.join(self.data_dir, "threads")
+        posts_dir = os.path.join(self.data_dir, "posts")
+
+        # 收集所有已发现帖子（按 fid 去重）
+        all_tids = []
+        seen = set()
+        for fname in os.listdir(threads_dir):
+            if not fname.endswith(".json"):
+                continue
+            with open(os.path.join(threads_dir, fname), "r", encoding="utf-8") as f:
+                items = json.load(f)
+            for item in items:
+                tid = str(item.get("tid", ""))
+                if tid and tid not in seen:
+                    seen.add(tid)
+                    all_tids.append(tid)
+
+        # 断点续传：默认跳过已抓取的，force 时重抓
+        done = {f[7:-5] for f in os.listdir(posts_dir) if f.startswith("thread_") and f.endswith(".json")}
+        todo = all_tids if force else [t for t in all_tids if t not in done]
+
+        print(f"共 {len(all_tids)} 个帖子，已抓取 {len(done)} 个，待抓取 {len(todo)} 个")
+
+        okCount = 0
+        failList = []
+        attemptedCount = 0
+        interrupted = False
+        for i, tid in enumerate(todo, 1):
+            attemptedCount += 1
+            try:
+                info = self.crawl_thread(tid)
+                if info:
+                    okCount += 1
+                    status = f"{info['total_posts']} 楼"
+                    if info.get("complete") is False:
+                        status += "（翻页不完整）"
+                else:
+                    failList.append(tid)
+                    status = "失败"
+                print(f"[{i}/{len(todo)}] tid={tid} {status}")
+            except PermissionError as e:
+                interrupted = True
+                failList.append(tid)
+                print(f"服务器限制访问，提前终止：{e}")
+                break
+            except Exception as e:
+                failList.append(tid)
+                print(f"[{i}/{len(todo)}] tid={tid} 异常: {e}")
+            time.sleep(0.3)
+
+        report = {
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+            "total_indexed": len(all_tids),
+            "already_done": len(done) if not force else 0,
+            "attempted": attemptedCount,
+            "success": okCount,
+            "failed": failList,
+            "interrupted": interrupted,
+        }
+        with open(os.path.join(posts_dir, "_run_report.json"), "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        print(f"批量正文抓取完成，成功 {okCount}，失败 {len(failList)}")
 
 
 def main():
     """主函数"""
-    crawler =UESTCBBSrawler()
-    
-    # 登录
-    username = "Linduer"
-    password = input("请输入密码: ")
-    
+    def cleanId(raw):
+        return re.sub(r"\D", "", raw)
+    parser = argparse.ArgumentParser(description="清水河畔论坛爬虫")
+    parser.add_argument("--data-dir", default=None, help="数据输出目录")
+    parser.add_argument("--interval", type=float, default=1.0, help="最小请求间隔秒数")
+    parser.add_argument("--force", action="store_true", help="重抓已有正文文件")
+    parser.add_argument("--no-login", action="store_true", help="匿名抓取公开内容")
+    args = parser.parse_args()
+
+    crawler =UESTCBBSrawler(data_dir=args.data_dir, request_interval=args.interval)
+    if "--no-login" in sys.argv:
+        crawler.crawl_all(max_pages_per_board=5, crawl_content=True)
+        return
+
+    # 登录：支持环境变量 BBS_USER / BBS_PASS 非交互传入，避免后台运行卡在 input()
+    username = os.environ.get("BBS_USER", "Linduer")
+    password = os.environ.get("BBS_PASS") or input("请输入密码: ")
+
     if not crawler.login(username, password):
         print("登录失败，请检查账号密码")
         return
-    
+
     # 选择爬取模式
-    print("\n请选择爬取模式:")
-    print("1. 爬取所有板块和帖子")
-    print("2. 爬取指定板块")
-    print("3. 爬取指定帖子")
-    print("4. 只爬取板块列表")
-    
-    choice = input("请输入选择 (1-4): ").strip()
-    
+    mode = os.environ.get("BBS_MODE")
+    if not mode:
+        print("\n请选择爬取模式:")
+        print("1. 爬取所有板块和帖子")
+        print("2. 爬取指定板块")
+        print("3. 爬取指定帖子")
+        print("4. 只爬取板块列表")
+        print("5. 批量抓取已发现帖子的完整正文（断点续传）")
+        print("6. 依据现有索引重抓全部主题正文（断点续传，可选覆盖）")
+        mode = input("请输入选择 (1-6): ").strip()
+
+    choice = mode
+
     if choice == "1":
         crawler.crawl_all(max_pages_per_board=5, crawl_content=True)
     elif choice == "2":
-        fids = input("请输入板块ID (多个用逗号分隔): ").strip().split(",")
+        fids = [cleanId(x) for x in input("请输入板块ID (多个用逗号分隔): ").strip().split(",")]
         crawler.crawl_specific(fids=fids, max_pages=10)
     elif choice == "3":
-        tids = input("请输入帖子ID (多个用逗号分隔): ").strip().split(",")
+        tids = [cleanId(x) for x in input("请输入帖子ID (多个用逗号分隔): ").strip().split(",")]
         crawler.crawl_specific(tids=tids)
     elif choice == "4":
         boards = crawler.parse_boards()
@@ -424,6 +556,10 @@ def main():
         with open(boards_file, "w", encoding="utf-8") as f:
             json.dump(boards, f, ensure_ascii=False, indent=2)
         print(f"板块列表已保存到 {boards_file}")
+    elif choice == "5":
+        crawler.crawl_all_contents()
+    elif choice == "6":
+        crawler.crawl_all_contents(force=args.force)
     else:
         print("无效选择")
 
