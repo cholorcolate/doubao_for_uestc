@@ -1,6 +1,6 @@
 # doubao_for_uestc
 
-> 项目状态：规划中（2026-09-17 立项）
+> 项目状态：数据爬取完成（2026-09-22）
 
 ## 项目定位
 
@@ -47,3 +47,172 @@
 - [ ] 数据源清单与合规边界（只采集公开信息）
 - [ ] 是否需要登录 / 个性化
 - [ ] 部署形态（本地 / 服务器 / 内网）
+
+---
+
+## 清水河畔论坛爬虫
+
+### 数据下载
+
+论坛爬取数据已上传到 GitHub Releases：
+
+**全量数据（推荐）：**
+- [清水河畔论坛全量数据 2026-09-18](https://github.com/cholorcolate/doubao_for_uestc/releases/tag/uestc-bbs-full-data-20260918)
+- 205,439 个主题，18个分卷压缩包（共 289.78 MB）
+- 需登录账号抓取
+
+**早期数据（仅供参考）：**
+- [清水河畔论坛数据 2026-09-18](https://github.com/cholorcolate/doubao_for_uestc/releases/tag/uestc-bbs-data-20260918)
+- 13,943 个主题，匿名抓取
+
+### 快速开始
+
+#### 1. 安装依赖
+
+```bash
+cd crawler
+pip install -r requirements.txt
+```
+
+#### 2. 下载数据
+
+从 [Releases](https://github.com/cholorcolate/doubao_for_uestc/releases) 下载压缩包，解压到本地目录。
+
+#### 3. 使用爬虫
+
+**匿名抓取（公开内容）：**
+```bash
+python uestc_bbs_crawler.py --no-login
+```
+
+**登录抓取（完整内容）：**
+```bash
+# 方式1：使用环境变量
+export BBS_USER="你的用户名"
+export BBS_PASS="你的密码"
+python uestc_bbs_crawler.py
+
+# 方式2：直接运行，按提示输入
+python uestc_bbs_crawler.py
+```
+
+**全量抓取（所有板块所有页面）：**
+```bash
+export BBS_USER="你的用户名"
+export BBS_PASS="你的密码"
+export BBS_MODE="7"
+python uestc_bbs_crawler.py --data-dir ./data --max-pages 100
+```
+
+**批量抓取正文（断点续传）：**
+```bash
+export BBS_USER="你的用户名"
+export BBS_PASS="你的密码"
+export BBS_MODE="5"
+python uestc_bbs_crawler.py --data-dir ./data
+```
+
+### 爬虫模式说明
+
+| 模式 | 说明 |
+|------|------|
+| 1 | 爬取所有板块和帖子（每板块前5页，前10个主题正文） |
+| 2 | 爬取指定板块（需输入板块ID） |
+| 3 | 爬取指定帖子（需输入帖子ID） |
+| 4 | 只爬取板块列表 |
+| 5 | 批量抓取已发现帖子的完整正文（断点续传） |
+| 6 | 依据现有索引重抓全部主题正文（可选覆盖） |
+| **7** | **全量抓取（推荐）：登录后抓取所有板块所有页面+所有主题正文** |
+
+### 命令行参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--data-dir` | 数据输出目录 | `C:\soft\opencode_download\uestc-public` |
+| `--interval` | 最小请求间隔（秒） | 1.0 |
+| `--max-pages` | 每个板块最大抓取页数 | 100 |
+| `--max-threads` | 每个板块最大抓取主题数（0=全部） | 0 |
+| `--force` | 重抓已有正文文件 | false |
+| `--no-login` | 匿名抓取公开内容 | false |
+
+### 数据结构
+
+```
+data/
+├── boards/              # 板块信息
+│   ├── board_45.json
+│   └── ...
+├── threads/             # 主题索引（每个板块一个文件）
+│   ├── threads_45.json
+│   └── ...
+├── posts/               # 主题正文（每个主题一个文件）
+│   ├── thread_123456.json
+│   └── ...
+└── boards_list.json     # 所有板块列表
+```
+
+### JSON 格式示例
+
+**主题索引（threads_*.json）：**
+```json
+[
+  {
+    "tid": "123456",
+    "title": "帖子标题",
+    "url": "https://bbs.uestc.edu.cn/forum.php?mod=viewthread&tid=123456",
+    "author": "用户名",
+    "replies": 10,
+    "views": 100,
+    "fid": "45"
+  }
+]
+```
+
+**主题正文（thread_*.json）：**
+```json
+{
+  "tid": "123456",
+  "title": "帖子标题",
+  "posts": [
+    {
+      "post_id": "789",
+      "author": "用户名",
+      "time": "发表于 2026-1-1 12:00",
+      "content": "帖子内容...",
+      "floor": "1楼"
+    }
+  ],
+  "total_posts": 10,
+  "complete": true,
+  "pages_fetched": 2,
+  "crawled_at": "2026-09-18T04:21:59"
+}
+```
+
+### 注意事项
+
+1. **合规使用**：本爬虫仅供学习和研究使用，请遵守论坛 robots.txt 规则
+2. **控制频率**：默认请求间隔 1 秒，请勿设置过小以免对服务器造成压力
+3. **登录账号**：使用自己的论坛账号登录，不要使用他人账号
+4. **数据存储**：爬取的数据体积较大（约 845 MB），请确保磁盘空间充足
+5. **断点续传**：支持断点续传，中断后可继续抓取
+
+### 常见问题
+
+**Q: 登录失败怎么办？**
+A: 检查用户名密码是否正确，如果论坛启用验证码可能需要手动处理。
+
+**Q: 爬取速度太慢？**
+A: 可以减小 `--interval` 的值，但建议不低于 0.3 秒。
+
+**Q: 如何爬取特定板块？**
+A: 使用模式 2，输入板块ID（fid）。可在论坛页面 URL 中找到。
+
+**Q: 数据保存在哪里？**
+A: 默认保存在 `--data-dir` 指定的目录，程序运行目录下的 `data` 文件夹。
+
+---
+
+## 免责声明
+
+本项目仅供学习和研究使用，不得用于任何商业或非法用途。使用本爬虫造成的一切后果由用户自行承担。
