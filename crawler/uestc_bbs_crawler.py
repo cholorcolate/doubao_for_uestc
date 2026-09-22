@@ -206,10 +206,18 @@ class UESTCBBSrawler:
                     if nums:
                         num_links = nums[0].find_all("a")
                         if num_links:
-                            replies = int(num_links[0].get_text(strip=True) or 0)
+                            replies_text = num_links[0].get_text(strip=True)
+                            try:
+                                replies = int(replies_text) if replies_text and replies_text != '-' else 0
+                            except ValueError:
+                                replies = 0
                         view_em = nums[0].find("em")
                         if view_em:
-                            views = int(view_em.get_text(strip=True) or 0)
+                            views_text = view_em.get_text(strip=True)
+                            try:
+                                views = int(views_text) if views_text and views_text != '-' else 0
+                            except ValueError:
+                                views = 0
                     
                     threads.append({
                         "tid": thread_id,
@@ -422,6 +430,78 @@ class UESTCBBSrawler:
         
         print(f"\n爬取完成! 共爬取 {total_threads} 个帖子")
     
+    def crawl_all_full(self, max_pages_per_board=100, crawl_content=True, max_threads_per_board=0):
+        """全量爬取：所有板块所有页面+所有主题正文"""
+        # 1. 获取所有板块
+        boards = self.parse_boards()
+        
+        # 保存板块列表
+        boards_file = os.path.join(self.data_dir, "boards_list.json")
+        with open(boards_file, "w", encoding="utf-8") as f:
+            json.dump(boards, f, ensure_ascii=False, indent=2)
+        
+        print(f"\n共找到 {len(boards)} 个板块")
+        print(f"每个板块最多抓取 {max_pages_per_board} 页")
+        if max_threads_per_board > 0:
+            print(f"每个板块最多抓取 {max_threads_per_board} 个主题正文")
+        else:
+            print("每个板块抓取所有主题正文")
+        
+        # 2. 爬取每个板块
+        total_threads = 0
+        all_tids = []
+        for i, board in enumerate(boards, 1):
+            print(f"\n[{i}/{len(boards)}] 处理板块: {board['name']} (fid={board['fid']})")
+            self.save_board(board)
+            
+            # 爬取帖子列表
+            threads = self.crawl_board(board["fid"], max_pages_per_board)
+            total_threads += len(threads)
+            
+            # 记录需要抓取正文的主题
+            threads_to_crawl = threads[:max_threads_per_board] if max_threads_per_board > 0 else threads
+            for thread in threads_to_crawl:
+                all_tids.append(thread["tid"])
+            
+            time.sleep(1)  # 板块间延迟
+        
+        print(f"\n板块索引抓取完成! 共索引 {total_threads} 个帖子")
+        
+        # 3. 抓取所有主题正文
+        if crawl_content and all_tids:
+            print(f"\n开始抓取 {len(all_tids)} 个主题正文...")
+            
+            # 断点续传：跳过已抓取的
+            posts_dir = os.path.join(self.data_dir, "posts")
+            done = {f[7:-5] for f in os.listdir(posts_dir) if f.startswith("thread_") and f.endswith(".json")}
+            todo = [t for t in all_tids if t not in done]
+            
+            print(f"共 {len(all_tids)} 个主题，已抓取 {len(done)} 个，待抓取 {len(todo)} 个")
+            
+            okCount = 0
+            failList = []
+            for i, tid in enumerate(todo, 1):
+                try:
+                    info = self.crawl_thread(tid)
+                    if info:
+                        okCount += 1
+                        status = f"{info['total_posts']} 楼"
+                        if info.get("complete") is False:
+                            status += "（翻页不完整）"
+                    else:
+                        failList.append(tid)
+                        status = "失败"
+                    print(f"[{i}/{len(todo)}] tid={tid} {status}")
+                except PermissionError as e:
+                    print(f"服务器限制访问，提前终止：{e}")
+                    break
+                except Exception as e:
+                    failList.append(tid)
+                    print(f"[{i}/{len(todo)}] tid={tid} 异常: {e}")
+                time.sleep(0.3)
+            
+            print(f"\n正文抓取完成! 成功 {okCount}，失败 {len(failList)}")
+    
     def crawl_specific(self, fids=None, tids=None, max_pages=10):
         """爬取指定的板块或帖子"""
         if fids:
@@ -513,6 +593,8 @@ def main():
     parser.add_argument("--interval", type=float, default=1.0, help="最小请求间隔秒数")
     parser.add_argument("--force", action="store_true", help="重抓已有正文文件")
     parser.add_argument("--no-login", action="store_true", help="匿名抓取公开内容")
+    parser.add_argument("--max-pages", type=int, default=100, help="每个板块最大抓取页数")
+    parser.add_argument("--max-threads", type=int, default=0, help="每个板块最大抓取主题数（0=全部）")
     args = parser.parse_args()
 
     crawler =UESTCBBSrawler(data_dir=args.data_dir, request_interval=args.interval)
@@ -538,7 +620,8 @@ def main():
         print("4. 只爬取板块列表")
         print("5. 批量抓取已发现帖子的完整正文（断点续传）")
         print("6. 依据现有索引重抓全部主题正文（断点续传，可选覆盖）")
-        mode = input("请输入选择 (1-6): ").strip()
+        print("7. 全量抓取（登录，所有板块所有页面+所有主题正文）")
+        mode = input("请输入选择 (1-7): ").strip()
 
     choice = mode
 
@@ -560,6 +643,12 @@ def main():
         crawler.crawl_all_contents()
     elif choice == "6":
         crawler.crawl_all_contents(force=args.force)
+    elif choice == "7":
+        crawler.crawl_all_full(
+            max_pages_per_board=args.max_pages,
+            crawl_content=True,
+            max_threads_per_board=args.max_threads
+        )
     else:
         print("无效选择")
 
