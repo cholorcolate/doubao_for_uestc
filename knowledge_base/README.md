@@ -7,10 +7,16 @@
 ```
 knowledge_base/
 ├── preprocess.py          # 数据预处理脚本
+├── chunk-data.py          # 分块脚本（知识单元 -> 检索块）
+├── embed-index.py         # 向量化并导入 Chroma
+├── fix-metadata.py        # 修复向量库板块元数据
+├── search.py              # 检索测试脚本
 ├── README.md              # 本文档
+├── chroma_db/             # Chroma 向量库（558,379 条）
 ├── raw/                   # 原始数据（需手动放入）
 └── processed/             # 处理后的数据
     ├── knowledge_units.json   # 知识单元数据
+    ├── chunks.jsonl           # 检索块（每行一个 JSON）
     └── stats.json             # 统计信息
 ```
 
@@ -140,14 +146,45 @@ python -c "import json; data=json.load(open('processed/knowledge_units.json')); 
 }
 ```
 
-## 后续步骤
+## 向量化与检索（已完成，2026-09-25）
 
-数据预处理完成后，可以进行：
+全流程零成本：Embedding 使用本地模型 `BAAI/bge-small-zh-v1.5`，无需 API Key，向量库使用本地 Chroma。
 
-1. **向量化**：使用豆包 doubao-embedding 将文本转为向量
-2. **存储**：存入 Chroma/Milvus/VikingDB 向量数据库
-3. **检索**：实现混合检索（向量+关键词+元数据）
-4. **生成**：接入LLM（豆包/DeepSeek-V4）生成回答
+### 完整流程
+
+```bash
+# 1. 预处理（25.5 万个知识单元）
+python preprocess.py --input C:\soft\opencode_download\uestc-public-full\posts --output ./processed
+
+# 2. 分块（558,379 个块，通过线程索引补全板块名）
+#    boards_list_full.json = boards_list.json（29 个公开板块）
+#                          + crawler/crawl_missing_boards.py 中的 15 个登录可见板块映射，共 44 个
+python chunk-data.py --input ./processed/knowledge_units.json --output ./processed/chunks.jsonl --boards C:\soft\opencode_download\uestc-public-full\boards_list_full.json --threads C:\soft\opencode_download\uestc-public-full\threads
+
+# 3. 向量化并入库（首次自动下载模型约 100MB，支持断点续传）
+python embed-index.py --input ./processed/chunks.jsonl --db ./chroma_db
+
+# 4. 仅修改了板块名等元数据时，用此脚本增量刷新向量库（不重新向量化）
+python fix-metadata.py --chunks ./processed/chunks.jsonl --db ./chroma_db
+
+# 5. 检索测试
+python search.py --query "保研需要什么条件" --top-k 5
+```
+
+### 实际结果
+
+- 知识单元：255,370 个（原始 257,345 主题）
+- 检索块：558,379 个（单块最多 600 字，重叠 60 字）
+- 向量库：Chroma 55.8 万条，磁盘约 5.4 GB
+- 板块：39 个板块全部为真实名称，占位符 `板块_编号` 已清零（含 15 个需登录可见的板块）
+- 每个块携带元数据：标题、板块名、来源链接、发帖时间，可做过滤检索
+- 检索效果示例：查询"保研需要什么条件"命中《想问下保研都需要哪些条件》（相似度 0.72，板块：保研考研）
+
+### 后续步骤
+
+1. **生成**：接入 LLM（豆包/DeepSeek-V4）基于检索结果生成回答（RAG）
+2. **混合检索**：叠加关键词检索（BM25）与元数据过滤提升准确率
+3. **重排**：接入 Rerank 模型（如硅基流动 Qwen3-Reranker）精排
 
 ## 注意事项
 

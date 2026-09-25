@@ -12,6 +12,9 @@ venv/
 # 数据与向量库（体积大，不入库）
 data/
 *.chroma
+knowledge_base/chroma_db/
+knowledge_base/processed/
+*.log
 
 # 本地备份与临时文件
 _backup/
