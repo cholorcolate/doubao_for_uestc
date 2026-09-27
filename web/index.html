@@ -198,8 +198,8 @@ svg{display:block}
   }).then(function(res){
     (res.boards || []).forEach(function(b){
       var opt = document.createElement("option");
-      opt.value = b;
-      opt.textContent = b;
+      opt.value = b.name;
+      opt.textContent = b.name + "（" + b.count + "）";
       boardSel.appendChild(opt);
     });
   }).catch(function(){});

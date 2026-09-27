@@ -7,6 +7,8 @@
   列表页 URL 与解析函数，即可复用「列表页 -> 文章页 -> 统一 JSON」流程
 - 输出格式与论坛 thread_*.json 对齐（tid/title/posts），
   便于直接进入 preprocess.py -> chunk-data.py 既有流水线
+- 教务处（jwc）已接入：列表用 li[newsid] 属性拼 /info/{newsid}，
+  文章页标题取 .detail_header h2、正文取 .NewText
 
 使用方法（需先安装依赖：pip install requests beautifulsoup4）:
     python official_sources.py --list                # 列出已配置的源
@@ -24,13 +26,14 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
-# 各官方源配置：url=列表页，parser 对应下方 parse_* 函数
+# 各官方源配置：url=列表页，parser=列表解析器，article_parser=文章解析器
 # 抓取前请人工访问列表页确认 DOM 结构是否变化
 SOURCES = {
     "jwc": {
         "name": "教务处",
-        "url": "https://jwc.uestc.edu.cn/",
-        "parser": "generic_list",
+        "url": "https://www.jwc.uestc.edu.cn/",
+        "parser": "jwc_list",
+        "article_parser": "jwc",
     },
     "yjsy": {
         "name": "研究生院",
@@ -115,15 +118,74 @@ def parse_article(html: str) -> dict | None:
     return {"title": title, "text": text, "publish_time": pubTime}
 
 
-def saveArticle(dataDir: str, sourceKey: str, index: int, article: dict):
+def jwc_list(html: str, baseUrl: str) -> list[dict]:
+    """教务处列表解析：文章标识在 <li newsid="..."> 属性上，a[href] 是 JS 占位。
+
+    拼接规则：文章页 URL = /info/{newsid}（由页面内 /info/xxx 链接确认）。
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+    seen = set()
+    for li in soup.find_all("li", attrs={"newsid": True}):
+        newsid = li["newsid"].strip()
+        a = li.find("a", href=True)
+        title = ""
+        if a:
+            title = (a.get("title") or "").strip() or a.get_text(strip=True)
+        if not newsid or not title or newsid in seen:
+            continue
+        seen.add(newsid)
+        url = requests.compat.urljoin(baseUrl, f"/info/{newsid}")
+        items.append({"id": newsid, "title": title, "url": url})
+    return items
+
+
+def jwc_article(html: str) -> dict | None:
+    """教务处文章页解析：标题在 .detail_header h2，正文在 .NewText（不含上一篇/下一篇）。"""
+    soup = BeautifulSoup(html, "html.parser")
+    h2 = soup.select_one(".detail_header h2") or soup.find("h2")
+    if not h2:
+        return None
+    title = h2.get_text(strip=True)
+
+    body = soup.find("div", class_="NewText") or soup.find("div", class_="contentNewText")
+    if not body:
+        return None
+    text = body.get_text("\n", strip=True)
+    if len(text) < 50:
+        return None
+
+    pubTime = ""
+    itemTag = soup.select_one(".detail_header .item")
+    m = re.search(r"发布时间[:：]\s*(20\d{2}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?)",
+                  itemTag.get_text(" ", strip=True) if itemTag else "")
+    if m:
+        pubTime = m.group(1).replace("/", "-")
+
+    return {"title": title, "text": text, "publish_time": pubTime}
+
+
+# 解析器注册表：SOURCES 中按名称引用，新站点接入时在此挂载
+LIST_PARSERS = {
+    "generic_list": generic_list,
+    "jwc_list": jwc_list,
+}
+ARTICLE_PARSERS = {
+    "generic": parse_article,
+    "jwc": jwc_article,
+}
+
+
+def saveArticle(dataDir: str, sourceKey: str, artId, article: dict):
     """保存为与论坛帖子对齐的 thread_*.json 格式，直接进入既有流水线"""
-    # 官方文章无论坛 tid，用源前缀+序号生成稳定 id（增量时可对比跳过）
-    tid = f"official_{sourceKey}_{index:04d}"
+    # 优先用站点文章 id（如教务处 newsid）保证增量抓取时 tid 稳定，
+    # 无站点 id 的源退回调用序号
+    tid = f"official_{sourceKey}_{artId}"
     record = {
         "tid": tid,
         "title": article["title"],
         "posts": [{
-            "post_id": str(index),
+            "post_id": str(artId),
             "author": SOURCES[sourceKey]["name"],
             "time": article.get("publish_time") or "",
             "content": article["text"],
@@ -136,6 +198,7 @@ def saveArticle(dataDir: str, sourceKey: str, index: int, article: dict):
         "crawled_at": datetime.now().isoformat(timespec="seconds"),
     }
     path = os.path.join(dataDir, "posts", f"thread_{tid}.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(record, f, ensure_ascii=False, indent=2)
 
@@ -145,11 +208,13 @@ def crawlSource(sourceKey: str, dataDir: str, maxPages: int = 3):
     conf = SOURCES[sourceKey]
     print(f"\n抓取 {conf['name']} ({conf['url']})")
     session = requests.Session()
-    parser = generic_list  # 当前只有通用解析，站点专用解析在此扩展
+    parser = LIST_PARSERS[conf.get("parser", "generic_list")]
+    articleParser = ARTICLE_PARSERS[conf.get("article_parser", "generic")]
 
     count = 0
+    seenUrls = set()
     for page in range(1, maxPages + 1):
-        # 多数官方站点列表页带 page 参数，不支持时会返回同页（去重兜底）
+        # 多数官方站点列表页带 page 参数，不支持时会返回同页（跨页按 URL 去重兜底）
         listUrl = conf["url"] if page == 1 else f"{conf['url']}index_{page}.html"
         html = fetch(listUrl, session)
         if not html:
@@ -158,12 +223,15 @@ def crawlSource(sourceKey: str, dataDir: str, maxPages: int = 3):
         if not items:
             break
         for item in items:
+            if item["url"] in seenUrls:
+                continue
+            seenUrls.add(item["url"])
             artHtml = fetch(item["url"], session)
             if not artHtml:
                 continue
-            article = parse_article(artHtml)
+            article = articleParser(artHtml)
             if article:
-                saveArticle(dataDir, sourceKey, count, article)
+                saveArticle(dataDir, sourceKey, item.get("id", count), article)
                 count += 1
             time.sleep(REQUEST_INTERVAL)
     print(f"  {conf['name']} 完成，共保存 {count} 篇")

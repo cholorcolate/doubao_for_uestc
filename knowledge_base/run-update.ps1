@@ -1,14 +1,16 @@
 ﻿<#
 .SYNOPSIS
-  知识库增量更新流水线：爬取新帖 -> 预处理 -> 分块 -> 向量入库 -> FTS 入库
+  知识库增量更新流水线：爬取新帖 + 官方源 -> 预处理 -> 分块 -> 向量入库 -> FTS 入库
 
 .DESCRIPTION
   每步通过 -Skip* 开关可跳过；全部成功后打印「重启服务」提示
   （uvicorn 无 --reload，需手动重启才能加载新数据）。
+  官方源（教务处）抓取失败仅警告，不阻断流水线。
 
   用法示例：
     .\run-update.ps1                          # 全流程（需 BBS_USER/BBS_PASS 环境变量）
     .\run-update.ps1 -SkipCrawl -SkipEmbed    # 只重建 FTS
+    .\run-update.ps1 -SkipOfficial            # 跳过官方源抓取
     .\run-update.ps1 -MinTid 2400000          # 指定基准 tid（默认从增量抓取报告读取）
 #>
 param(
@@ -17,6 +19,7 @@ param(
     [string]$KbDir = "$PSScriptRoot",
     [int]$MinTid = 0,
     [switch]$SkipCrawl,
+    [switch]$SkipOfficial,
     [switch]$SkipPreprocess,
     [switch]$SkipEmbed,
     [switch]$SkipFts
@@ -48,6 +51,15 @@ if (-not $SkipCrawl) {
     Invoke-Step "增量抓取（爬虫模式 8）" {
         $env:BBS_MODE = "8"
         & $Python $Crawler --data-dir (Split-Path $PostsDir) --max-pages 3
+    }
+}
+
+# 1.5 官方源抓取（教务处等，落盘 posts/ 与论坛同流水线；失败不阻断）
+if (-not $SkipOfficial) {
+    Write-Host "`n===== 官方源抓取 =====" -ForegroundColor Cyan
+    & $Python (Join-Path $KbDir "..\crawler\official_sources.py") --all --max-pages 1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "官方源抓取失败（网络不通或站点变更），继续后续步骤" -ForegroundColor Yellow
     }
 }
 
