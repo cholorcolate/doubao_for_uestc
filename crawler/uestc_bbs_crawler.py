@@ -502,6 +502,97 @@ class UESTCBBSrawler:
             
             print(f"\n正文抓取完成! 成功 {okCount}，失败 {len(failList)}")
     
+    def crawl_incremental(self, max_pages_per_board=3, minBaseTid=0):
+        """增量抓取：只抓比基准 tid 更新的主题正文。
+
+        基准 tid 取已有正文文件中的最大 tid（论坛 tid 单调递增），
+        也可通过 minBaseTid 参数显式指定。抓取完成后返回新主题数量，
+        供后续流水线（预处理->分块->embed upsert）使用。
+        """
+        posts_dir = os.path.join(self.data_dir, "posts")
+        baseTid = minBaseTid
+        if baseTid <= 0:
+            for fname in os.listdir(posts_dir):
+                if fname.startswith("thread_") and fname.endswith(".json"):
+                    try:
+                        baseTid = max(baseTid, int(fname[7:-5]))
+                    except ValueError:
+                        continue
+        print(f"增量基准 tid: {baseTid}")
+
+        boards = self.parse_boards()
+        boards_file = os.path.join(self.data_dir, "boards_list.json")
+        with open(boards_file, "w", encoding="utf-8") as f:
+            json.dump(boards, f, ensure_ascii=False, indent=2)
+        print(f"共 {len(boards)} 个板块，每板块扫描前 {max_pages_per_board} 页")
+
+        newTids = []
+        seen = set()
+        for i, board in enumerate(boards, 1):
+            print(f"\n[{i}/{len(boards)}] 扫描板块: {board['name']} (fid={board['fid']})")
+            self.save_board(board)
+
+            allInBoard = []
+            page = 1
+            while page <= max_pages_per_board:
+                threads, has_next = self.parse_thread_list(board["fid"], page)
+                if not threads:
+                    break
+                allInBoard.extend(threads)
+                if not has_next:
+                    break
+                page += 1
+                time.sleep(0.5)
+
+            # tid 单调递增：只保留大于基准的新主题
+            fresh = [t for t in allInBoard if int(t["tid"]) > baseTid]
+            for t in fresh:
+                tid = str(t["tid"])
+                if tid not in seen:
+                    seen.add(tid)
+                    newTids.append(tid)
+            print(f"  该板块新主题 {len(fresh)} 个")
+            time.sleep(1)
+
+        # 断点续传：跳过本次运行中已抓过的
+        done = {f[7:-5] for f in os.listdir(posts_dir)
+                if f.startswith("thread_") and f.endswith(".json")}
+        todo = [t for t in newTids if t not in done]
+
+        print(f"\n发现新主题 {len(newTids)} 个，其中待抓正文 {len(todo)} 个")
+
+        okCount = 0
+        failList = []
+        for i, tid in enumerate(todo, 1):
+            try:
+                info = self.crawl_thread(tid)
+                if info:
+                    okCount += 1
+                    status = f"{info['total_posts']} 楼"
+                else:
+                    failList.append(tid)
+                    status = "失败"
+                print(f"[{i}/{len(todo)}] tid={tid} {status}")
+            except PermissionError as e:
+                print(f"服务器限制访问，提前终止：{e}")
+                break
+            except Exception as e:
+                failList.append(tid)
+                print(f"[{i}/{len(todo)}] tid={tid} 异常: {e}")
+            time.sleep(0.3)
+
+        report = {
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+            "base_tid": baseTid,
+            "new_threads": len(newTids),
+            "crawled": okCount,
+            "failed": failList,
+        }
+        with open(os.path.join(posts_dir, "_incremental_report.json"), "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        print(f"\n增量抓取完成！新主题 {len(newTids)}，成功抓取 {okCount}，失败 {len(failList)}")
+        return len(todo)
+
     def crawl_specific(self, fids=None, tids=None, max_pages=10):
         """爬取指定的板块或帖子"""
         if fids:
@@ -621,7 +712,8 @@ def main():
         print("5. 批量抓取已发现帖子的完整正文（断点续传）")
         print("6. 依据现有索引重抓全部主题正文（断点续传，可选覆盖）")
         print("7. 全量抓取（登录，所有板块所有页面+所有主题正文）")
-        mode = input("请输入选择 (1-7): ").strip()
+        print("8. 增量抓取（只抓基准 tid 之后的新主题正文）")
+        mode = input("请输入选择 (1-8): ").strip()
 
     choice = mode
 
@@ -649,6 +741,8 @@ def main():
             crawl_content=True,
             max_threads_per_board=args.max_threads
         )
+    elif choice == "8":
+        crawler.crawl_incremental(max_pages_per_board=args.max_pages)
     else:
         print("无效选择")
 
