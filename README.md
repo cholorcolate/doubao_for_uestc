@@ -121,8 +121,9 @@ python uestc_bbs_crawler.py --data-dir ./data
 | 3 | 爬取指定帖子（需输入帖子ID） |
 | 4 | 只爬取板块列表 |
 | 5 | 批量抓取已发现帖子的完整正文（断点续传） |
-| 6 | 依据现有索引重抓全部主题正文（可选覆盖） |
+| 6 | 依据现有索引重抓全部主题正文（断点续传，可选覆盖） |
 | **7** | **全量抓取（推荐）：登录后抓取所有板块所有页面+所有主题正文** |
+| **8** | **增量抓取：只抓基准 tid（已有正文最大 tid）之后的新主题正文** |
 
 ### 命令行参数
 
@@ -210,6 +211,69 @@ A: 使用模式 2，输入板块ID（fid）。可在论坛页面 URL 中找到�
 
 **Q: 数据保存在哪里？**
 A: 默认保存在 `--data-dir` 指定的目录，程序运行目录下的 `data` 文件夹。
+
+---
+
+## RAG 智能问答
+
+### 架构
+
+```
+用户提问 → 混合检索（向量 30 + BM25/FTS5 30 → RRF 融合 top-10）
+         → Rerank 精排（硅基流动 bge-reranker-v2-m3）
+         → 加权融合（0.7×Rerank + 0.3×归一化RRF）→ top-5
+         → LLM 生成（Qwen3-8B，带出处标注）→ 前端展示
+```
+
+- 向量库：Chroma（本地 bge-small-zh-v1.5，558,379 条）
+- 关键词索引：SQLite FTS5（jieba 分词，标题权重 10×）
+- 支持板块过滤与时间过滤（近一月/三月/一年/三年）
+- 检索失败降级：Rerank/生成失败时逐级回退，不阻断回答
+
+### 检索质量评测
+
+评测集 `backend/eval/eval_set.jsonl`（47 条真实问题 + 期望 tid），
+指标为期望帖子进入第 1 / 前 5 条的比例：
+
+| 组别 | hit@1 | hit@5 | MRR@5 |
+|------|-------|-------|-------|
+| A 纯向量（原基线） | 44.7% | 68.1% | 0.529 |
+| B 混合检索 | 55.3% | 78.7% | 0.660 |
+| **C 混合+Rerank（当前线上）** | **61.7%** | 76.6% | **0.667** |
+
+复跑：`cd backend && python eval/evaluate.py`
+
+### 本地启动
+
+```powershell
+# 1. 配置密钥
+Copy-Item .env.example .env   # 填入 SILICONFLOW_API_KEY
+
+# 2. 启动服务（无 --reload，改代码需重启）
+cd backend
+C:\soft\python\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
+# 打开 http://127.0.0.1:8000
+```
+
+---
+
+## 知识库增量更新
+
+`knowledge_base/run-update.ps1` 一键流水线：增量抓取（模式 8）→ 预处理 →
+分块 → 向量入库（`embed-index.py --min-tid`）→ FTS 入库（`build-fts.py --min-tid`）。
+
+```powershell
+$env:BBS_USER = "用户名"; $env:BBS_PASS = "密码"
+cd knowledge_base
+.\run-update.ps1                # 全流程
+.\run-update.ps1 -SkipCrawl     # 跳过抓取，只重建入库
+.\run-update.ps1 -MinTid 2400000  # 手动指定基准 tid
+```
+
+- 增量入库幂等：向量走 upsert，FTS 按 chunk_id 去重，重复执行安全
+- 全量 FTS 重建约 10 分钟；增量只处理新分块
+- 更新完成后需重启 uvicorn 才生效
+- 官方源（教务处等）骨架：`crawler/official_sources.py`（`--list` 查看已配置源）
 
 ---
 

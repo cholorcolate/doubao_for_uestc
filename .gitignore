@@ -14,6 +14,7 @@ data/
 *.chroma
 knowledge_base/chroma_db/
 knowledge_base/processed/
+knowledge_base/fts_index.db*
 *.log
 
 # 本地备份与临时文件
