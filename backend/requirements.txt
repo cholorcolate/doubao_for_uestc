@@ -1,2 +1,7 @@
 fastapi
 uvicorn
+chromadb
+sentence-transformers
+openai
+jieba
+requests
