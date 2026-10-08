@@ -156,6 +156,10 @@ class RagEngine:
     def embedder(self):
         """懒加载本地向量模型"""
         if self._embedder is None:
+            # 离线模式：模型已在本地缓存，跳过对 huggingface.co 的联网检查
+            # （联网会因 SSL 证书问题反复重试，导致预热卡住数分钟）
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
             os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
             from sentence_transformers import SentenceTransformer
 
@@ -398,6 +402,12 @@ class RagEngine:
             if reranked:
                 return self._blendScores(reranked, candidates)[:topK]
         return candidates[:topK]
+
+    def keywordSearch(self, question: str, topK: int = 8) -> list:
+        """纯 BM25 关键词检索 + 去重（校园工具页等轻量场景，
+        不走向量模型与 Rerank，毫秒级返回）"""
+        hits = self._bm25Search(question, topK=topK * 3)
+        return self._dedup(hits)[:topK]
 
     @staticmethod
     def _blendScores(reranked: list, candidates: list) -> list:

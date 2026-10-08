@@ -15,7 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from feed import CATEGORIES as FEED_CATEGORIES, queryFeed
 from rag import RagEngine
+from tools import listTools, searchTool
 
 # 项目根目录下的前端目录（与启动时的工作目录无关）
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -23,6 +25,13 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 启动阶段（单线程、接流量前）预导入重依赖：
+    # 避免预热线程与请求线程并发首次 import numpy 触发循环导入竞态
+    import jieba  # noqa: F401
+    import numpy  # noqa: F401
+    import chromadb  # noqa: F401
+    import sentence_transformers  # noqa: F401
+
     # 启动时后台预热模型与向量库，避免首个请求等待
     asyncio.create_task(asyncio.to_thread(RagEngine.instance().warmup))
     yield
@@ -74,6 +83,34 @@ async def boards():
     finally:
         conn.close()
     return {"boards": [{"name": b, "count": c} for b, c in rows if b]}
+
+
+@app.get("/api/feed/categories")
+async def feedCategories():
+    """信息聚合分类列表（前端 tab）"""
+    return {
+        "categories": [{"id": cid, "name": spec["name"]}
+                       for cid, spec in FEED_CATEGORIES.items()]
+    }
+
+
+@app.get("/api/feed")
+async def feedList(category: str | None = None, board: str | None = None,
+                   page: int = 1, size: int = 20):
+    """信息聚合分页列表（通知公告/讲座/竞赛/招聘，可按板块过滤）"""
+    return await asyncio.to_thread(queryFeed, category, board, page, size)
+
+
+@app.get("/api/tools")
+async def toolsList():
+    """校园工具列表"""
+    return {"tools": listTools()}
+
+
+@app.get("/api/tools/{toolId}")
+async def toolSearch(toolId: str, q: str | None = None, topK: int = 8):
+    """校园工具知识库检索（BM25，q 覆盖预置检索词）"""
+    return await asyncio.to_thread(searchTool, toolId, q, topK)
 
 
 @app.get("/api/health")
