@@ -1,6 +1,6 @@
 # doubao_for_uestc
 
-> 项目状态：数据爬取完成（2026-09-22）
+> 项目状态：数据爬取完成（2026-09-22），已增量更新至 2026-10-08
 
 ## 项目定位
 
@@ -60,6 +60,10 @@
 - [清水河畔论坛全量数据 2026-09-18](https://github.com/cholorcolate/doubao_for_uestc/releases/tag/uestc-bbs-full-data-20260918)
 - 205,439 个主题，18个分卷压缩包（共 289.78 MB）
 - 需登录账号抓取
+
+**增量数据（最新）：**
+- [论坛增量数据 2026-10-08](https://github.com/cholorcolate/doubao_for_uestc/releases/tag/uestc-bbs-incremental-20261008)
+- 1,528 个新主题（基准 tid 2490829）+ 教务处/研究生院官方源 51 篇，1.2 MB
 
 **早期数据（仅供参考）：**
 - [清水河畔论坛数据 2026-09-18](https://github.com/cholorcolate/doubao_for_uestc/releases/tag/uestc-bbs-data-20260918)
@@ -225,7 +229,7 @@ A: 默认保存在 `--data-dir` 指定的目录，程序运行目录下的 `data
          → LLM 生成（Qwen3-8B，带出处标注）→ 前端展示
 ```
 
-- 向量库：Chroma（本地 bge-small-zh-v1.5，558,379 条）
+- 向量库：Chroma（本地 bge-small-zh-v1.5，560,300 条）
 - 关键词索引：SQLite FTS5（jieba 分词，标题权重 10×）
 - 支持板块过滤与时间过滤（近一月/三月/一年/三年）
 - 检索失败降级：Rerank/生成失败时逐级回退，不阻断回答

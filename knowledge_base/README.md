@@ -12,7 +12,7 @@ knowledge_base/
 ├── fix-metadata.py        # 修复向量库板块元数据
 ├── search.py              # 检索测试脚本
 ├── README.md              # 本文档
-├── chroma_db/             # Chroma 向量库（558,379 条）
+├── chroma_db/             # Chroma 向量库（560,300 条）
 ├── raw/                   # 原始数据（需手动放入）
 └── processed/             # 处理后的数据
     ├── knowledge_units.json   # 知识单元数据
@@ -156,7 +156,7 @@ python -c "import json; data=json.load(open('processed/knowledge_units.json')); 
 # 1. 预处理（25.5 万个知识单元）
 python preprocess.py --input C:\soft\opencode_download\uestc-public-full\posts --output ./processed
 
-# 2. 分块（558,379 个块，通过线程索引补全板块名）
+# 2. 分块（560,300 个块，通过线程索引补全板块名）
 #    boards_list_full.json = boards_list.json（29 个公开板块）
 #                          + crawler/crawl_missing_boards.py 中的 15 个登录可见板块映射，共 44 个
 python chunk-data.py --input ./processed/knowledge_units.json --output ./processed/chunks.jsonl --boards C:\soft\opencode_download\uestc-public-full\boards_list_full.json --threads C:\soft\opencode_download\uestc-public-full\threads
@@ -173,9 +173,9 @@ python search.py --query "保研需要什么条件" --top-k 5
 
 ### 实际结果
 
-- 知识单元：255,370 个（原始 257,345 主题）
-- 检索块：558,379 个（单块最多 600 字，重叠 60 字）
-- 向量库：Chroma 55.8 万条，磁盘约 5.4 GB
+- 知识单元：256,910 个（原始 258,928 主题，更新至 2026-10-08）
+- 检索块：560,300 个（单块最多 600 字，重叠 60 字）
+- 向量库：Chroma 56.0 万条，磁盘约 5.4 GB
 - 板块：39 个板块全部为真实名称，占位符 `板块_编号` 已清零（含 15 个需登录可见的板块）
 - 每个块携带元数据：标题、板块名、来源链接、发帖时间，可做过滤检索
 - 检索效果示例：查询"保研需要什么条件"命中《想问下保研都需要哪些条件》（相似度 0.72，板块：保研考研）
