@@ -35,7 +35,7 @@ def main():
             record = json.loads(line)
             boardInfo[record["chunk_id"]] = (
                 record["board_name"], record.get("board_id", ""),
-                record.get("source", ""),
+                record.get("source", ""), record.get("create_time") or "",
             )
     print(f"共 {len(boardInfo)} 个块的板块/来源信息")
 
@@ -62,6 +62,7 @@ def main():
                 meta["board_name"] = newInfo[0]
                 meta["board_id"] = newInfo[1]
                 meta["source"] = newInfo[2]
+                meta["create_time"] = newInfo[3]
             metadatas.append(meta)
         collection.update(ids=ids, metadatas=metadatas)
         updated += len(ids)

@@ -17,7 +17,7 @@ import re
 import json
 import html
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from collections import defaultdict
 
@@ -171,32 +171,39 @@ def should_skip_thread(thread_data: dict) -> bool:
 
 # ============ 时间解析 ============
 
-def parse_time(time_str: str) -> Optional[str]:
-    """解析各种时间格式，统一输出为ISO格式"""
+def parse_time(time_str: str, baseTime: str = "") -> Optional[str]:
+    """解析各种时间格式，统一输出为ISO格式。
+
+    相对时间（N分钟前/N小时前/N天前/昨天/今天等）按 baseTime
+    （帖子 crawled_at 抓取时刻）换算为真实时间，保证入库后可正确排序；
+    解析失败时兜底返回 baseTime。
+    """
     if not time_str:
         return None
 
-    # 清理时间字符串
-    time_str = time_str.strip()
+    # 清理时间字符串（含不换行空格）
+    time_str = time_str.replace("\xa0", " ").strip()
     time_str = re.sub(r'^发表于\s*', '', time_str)
 
-    # 处理相对时间
-    if "昨天" in time_str:
-        return "yesterday"
-    if "今天" in time_str:
-        return "today"
-    if "天前" in time_str:
-        match = re.search(r'(\d+)\s*天前', time_str)
-        if match:
-            return f"{match.group(1)}_days_ago"
+    # 基准时间：抓取时刻
+    base = None
+    mBase = re.match(r'(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?',
+                     baseTime or "")
+    if mBase:
+        base = datetime(int(mBase[1]), int(mBase[2]), int(mBase[3]),
+                        int(mBase[4] or 0), int(mBase[5] or 0), int(mBase[6] or 0))
+    else:
+        base = datetime.now()
 
-    # 尝试解析标准格式
+    def fmt(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # 先尝试标准绝对格式（含年份）
     patterns = [
         r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})',
         r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})',
         r'(\d{4})-(\d{1,2})-(\d{1,2})',
     ]
-
     for pattern in patterns:
         match = re.search(pattern, time_str)
         if match:
@@ -208,7 +215,48 @@ def parse_time(time_str: str) -> Optional[str]:
             elif len(groups) == 3:
                 return f"{groups[0]}-{groups[1].zfill(2)}-{groups[2].zfill(2)}T00:00:00"
 
-    return time_str
+    # 相对时间：按基准时刻换算
+    if "刚刚" in time_str:
+        return fmt(base)
+    m = re.search(r'(\d+)\s*分钟前', time_str)
+    if m:
+        return fmt(base - timedelta(minutes=int(m.group(1))))
+    m = re.search(r'(?:大约\s*)?(\d+)\s*小时', time_str)
+    if m:
+        return fmt(base - timedelta(hours=int(m.group(1))))
+    m = re.search(r'(\d+)\s*个?\s*月前', time_str)
+    if m:
+        return fmt(base - timedelta(days=30 * int(m.group(1))))
+    m = re.search(r'(\d+)\s*年前', time_str)
+    if m:
+        return fmt(base - timedelta(days=365 * int(m.group(1))))
+    m = re.search(r'(\d+)\s*天前', time_str)
+    if m:
+        return fmt(base - timedelta(days=int(m.group(1))))
+    if "昨天" in time_str:
+        hm = re.search(r'(\d{1,2}):(\d{2})', time_str)
+        day = base - timedelta(days=1)
+        if hm:
+            return fmt(day.replace(hour=int(hm.group(1)), minute=int(hm.group(2)), second=0))
+        return fmt(day.replace(hour=0, minute=0, second=0))
+    if "今天" in time_str:
+        hm = re.search(r'(\d{1,2}):(\d{2})', time_str)
+        if hm:
+            return fmt(base.replace(hour=int(hm.group(1)), minute=int(hm.group(2)), second=0))
+        return fmt(base.replace(hour=0, minute=0, second=0))
+
+    # 月-日格式（如 10-08，缺年份按基准年份）
+    m = re.match(r'(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?', time_str)
+    if m and base.year >= 2000:
+        try:
+            dt = datetime(base.year, int(m.group(1)), int(m.group(2)),
+                          int(m.group(3) or 0), int(m.group(4) or 0))
+            return fmt(dt)
+        except ValueError:
+            pass
+
+    # 兜底：解析失败用抓取时刻，避免相对字符串破坏排序
+    return fmt(base)
 
 
 # ============ 知识单元构建 ============
@@ -229,6 +277,7 @@ def build_knowledge_unit(thread_data: dict, board_info: dict = None) -> dict:
 
     # 清洗标题
     title = clean_text(title)
+    crawledAt = thread_data.get("crawled_at", "")
 
     # 处理所有回复
     cleaned_posts = []
@@ -240,7 +289,7 @@ def build_knowledge_unit(thread_data: dict, board_info: dict = None) -> dict:
         cleaned_post = {
             "post_id": post.get("post_id", ""),
             "author": post.get("author", "匿名"),
-            "time": parse_time(post.get("time", "")),
+            "time": parse_time(post.get("time", ""), crawledAt),
             "content": content,
         }
         cleaned_posts.append(cleaned_post)
@@ -261,8 +310,8 @@ def build_knowledge_unit(thread_data: dict, board_info: dict = None) -> dict:
         "board_id": board_info.get("fid", "") if board_info else "",
         "board_name": board_info.get("name", "") if board_info else "",
         "author": posts[0].get("author", "匿名") if posts else "匿名",
-        "create_time": parse_time(posts[0].get("time", "")) if posts else None,
-        "last_reply_time": parse_time(posts[-1].get("time", "")) if len(posts) > 1 else None,
+        "create_time": parse_time(posts[0].get("time", ""), crawledAt) if posts else None,
+        "last_reply_time": parse_time(posts[-1].get("time", ""), crawledAt) if len(posts) > 1 else None,
         "reply_count": len(cleaned_posts) - 1,
         "view_count": thread_data.get("views", 0),
         "posts": cleaned_posts,
