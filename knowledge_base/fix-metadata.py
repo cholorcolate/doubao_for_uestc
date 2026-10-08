@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--batch", type=int, default=2000, help="每批更新条数")
     args = parser.parse_args()
 
-    # 读取新分块的板块信息
+    # 读取新分块的板块与来源链接信息
     print("读取新分块...")
     boardInfo = {}
     with open(args.chunks, "r", encoding="utf-8") as f:
@@ -33,8 +33,11 @@ def main():
             if not line:
                 continue
             record = json.loads(line)
-            boardInfo[record["chunk_id"]] = (record["board_name"], record.get("board_id", ""))
-    print(f"共 {len(boardInfo)} 个块的板块信息")
+            boardInfo[record["chunk_id"]] = (
+                record["board_name"], record.get("board_id", ""),
+                record.get("source", ""),
+            )
+    print(f"共 {len(boardInfo)} 个块的板块/来源信息")
 
     client = chromadb.PersistentClient(path=args.db)
     collection = client.get_collection(args.collection)
@@ -53,11 +56,12 @@ def main():
         ids = batch["ids"]
         metadatas = []
         for cid, meta in zip(ids, batch["metadatas"]):
-            newBoard = boardInfo.get(cid)
-            if newBoard:
+            newInfo = boardInfo.get(cid)
+            if newInfo:
                 meta = dict(meta)
-                meta["board_name"] = newBoard[0]
-                meta["board_id"] = newBoard[1]
+                meta["board_name"] = newInfo[0]
+                meta["board_id"] = newInfo[1]
+                meta["source"] = newInfo[2]
             metadatas.append(meta)
         collection.update(ids=ids, metadatas=metadatas)
         updated += len(ids)

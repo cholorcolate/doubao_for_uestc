@@ -398,7 +398,7 @@ svg{display:block}
     return '<div class="feed-item"><div class="fi-main">' +
       '<a class="fi-title" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +
       esc(it.title) + "</a>" +
-      '<div class="fi-meta">' + esc(it.board) + " · " + esc(it.time) + "</div>" +
+      '<div class="fi-meta">' + esc(it.board || it.site || "") + " · " + esc(it.time) + "</div>" +
       '<div class="fi-snippet">' + esc(it.snippet) + "</div></div>" +
       favBtnHtml(it) + "</div>";
   }

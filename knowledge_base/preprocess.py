@@ -24,6 +24,33 @@ from collections import defaultdict
 
 # ============ 文本清洗 ============
 
+# 官方源站点首页（tid 无真实文章链接时的跳转兜底）
+OFFICIAL_HOMES = {
+    "jwc": "https://www.jwc.uestc.edu.cn/",
+    "yjsy": "https://yz.uestc.edu.cn/",
+}
+
+
+def resolveSource(tid: str, threadData: dict) -> str:
+    """按来源类型解析知识单元的跳转链接：
+
+    1. 原始记录带 url（官方源抓取时保存的真实文章链接）直接使用
+    2. official_jwc_{newsid} 可还原为教务处文章页 /info/{newsid}
+    3. 其余官方源退回对应站点首页
+    4. 论坛帖子拼清水河畔链接
+    """
+    url = threadData.get("url") or ""
+    if url.startswith("http"):
+        return url
+    if tid.startswith("official_"):
+        parts = tid.split("_", 2)
+        siteKey = parts[1] if len(parts) > 1 else ""
+        if siteKey == "jwc" and len(parts) == 3:
+            return f"https://www.jwc.uestc.edu.cn/info/{parts[2]}"
+        return OFFICIAL_HOMES.get(siteKey, OFFICIAL_HOMES["jwc"])
+    return f"https://bbs.uestc.edu.cn/forum.php?mod=viewthread&tid={tid}"
+
+
 def clean_html_entities(text: str) -> str:
     """清理HTML实体"""
     if not text:
@@ -230,7 +257,7 @@ def build_knowledge_unit(thread_data: dict, board_info: dict = None) -> dict:
     knowledge_unit = {
         "id": tid,
         "title": title,
-        "source": f"https://bbs.uestc.edu.cn/forum.php?mod=viewthread&tid={tid}",
+        "source": resolveSource(tid, thread_data),
         "board_id": board_info.get("fid", "") if board_info else "",
         "board_name": board_info.get("name", "") if board_info else "",
         "author": posts[0].get("author", "匿名") if posts else "匿名",

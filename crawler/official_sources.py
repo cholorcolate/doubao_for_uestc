@@ -176,7 +176,7 @@ ARTICLE_PARSERS = {
 }
 
 
-def saveArticle(dataDir: str, sourceKey: str, artId, article: dict):
+def saveArticle(dataDir: str, sourceKey: str, artId, article: dict, articleUrl: str = ""):
     """保存为与论坛帖子对齐的 thread_*.json 格式，直接进入既有流水线"""
     # 优先用站点文章 id（如教务处 newsid）保证增量抓取时 tid 稳定，
     # 无站点 id 的源退回调用序号
@@ -195,6 +195,7 @@ def saveArticle(dataDir: str, sourceKey: str, artId, article: dict):
         "complete": True,
         "pages_fetched": 1,
         "source": "official",
+        "url": articleUrl,
         "crawled_at": datetime.now().isoformat(timespec="seconds"),
     }
     path = os.path.join(dataDir, "posts", f"thread_{tid}.json")
@@ -231,7 +232,8 @@ def crawlSource(sourceKey: str, dataDir: str, maxPages: int = 3):
                 continue
             article = articleParser(artHtml)
             if article:
-                saveArticle(dataDir, sourceKey, item.get("id", count), article)
+                saveArticle(dataDir, sourceKey, item.get("id", count), article,
+                            articleUrl=item["url"])
                 count += 1
             time.sleep(REQUEST_INTERVAL)
     print(f"  {conf['name']} 完成，共保存 {count} 篇")

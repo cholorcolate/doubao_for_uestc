@@ -36,6 +36,47 @@ CATEGORIES = {
 
 SNIPPET_CHARS = 150  # 列表摘要最大字数
 
+# 官方源识别表：tid 前缀 official_{key} -> 站点信息
+# infoPattern 为单篇链接模板（{id} 占位），无单篇链接的源退回 home 首页
+OFFICIAL_SITES = {
+    "jwc": {
+        "name": "教务处",
+        "home": "https://www.jwc.uestc.edu.cn/",
+        "infoPattern": "https://www.jwc.uestc.edu.cn/info/{}",
+    },
+    "yjsy": {
+        "name": "研究生院",
+        "home": "https://yz.uestc.edu.cn/",
+        "infoPattern": None,
+    },
+}
+BBS_HOST = "bbs.uestc.edu.cn"
+
+
+def classify(tid, source):
+    """按帖子类型识别跳转链接与来源站点，返回 (url, siteName)。
+
+    - 论坛帖：原样返回清水河畔链接，站点为「清水河畔」
+    - 官方源帖（tid=official_{key}_{id}）：不跳论坛，按类型跳官网
+      · 数据层已修正 source 时直接沿用
+      · 旧数据 source 仍是假论坛链接时按 tid 还原真实链接
+    """
+    tid = str(tid or "")
+    source = source or ""
+    if not tid.startswith("official_"):
+        return source, "清水河畔"
+    parts = tid.split("_", 2)
+    site = OFFICIAL_SITES.get(parts[1]) if len(parts) > 1 else None
+    if not site:
+        return source, "官方网站"
+    # source 已是该官网域名的真实链接则直接使用
+    host = site["home"].split("//", 1)[-1].rstrip("/")
+    if host in source and BBS_HOST not in source:
+        return source, site["name"]
+    if len(parts) == 3 and site["infoPattern"]:
+        return site["infoPattern"].format(parts[2]), site["name"]
+    return site["home"], site["name"]
+
 
 def buildWhere(category=None, board=None):
     """拼接 WHERE 条件，返回 (sql 片段, 参数列表)"""
@@ -92,11 +133,13 @@ def queryFeed(category=None, board=None, page=1, size=20):
 
     items = []
     for tid, title, boardName, source, createTime, text in rows:
+        url, site = classify(tid, source)
         items.append({
             "tid": str(tid),
             "title": title or "",
             "board": boardName or "",
-            "url": source or "",
+            "site": site,
+            "url": url,
             "time": (createTime or "")[:10],
             "snippet": (text or "").replace("\n", " ")[:SNIPPET_CHARS],
         })
