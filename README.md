@@ -259,6 +259,42 @@ C:\soft\python\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 # 打开 http://127.0.0.1:8000
 ```
 
+### 前端 GitHub Pages 部署
+
+前端为单文件应用（`web/index.html`），可独立部署到 GitHub Pages，
+页面通过浏览器直连本地后端 `http://127.0.0.1:8000`。
+
+> 混合内容说明：GitHub Pages 是 https，本地后端是 http，但浏览器对
+> `127.0.0.1`/`localhost` 有 loopback 豁免，故可直接跨域访问。
+> 代价是**只有运行后端的这台电脑能正常使用问答功能**。
+
+站点地址：<https://linduer.github.io/doubao_for_uestc/>
+
+**后端地址可临时覆盖**（页面会记住选择）：
+
+```
+https://linduer.github.io/doubao_for_uestc/?api=http://192.168.1.10:8000
+```
+
+也可在页面「我的 → 后端连接」面板中填写并测试连通性。
+
+**发布流程**：
+
+```powershell
+# 1. 修改主仓库的 web/index.html 后提交
+git add web/index.html
+git commit -m "feat: 更新前端"
+git push
+
+# 2. 同步到 Pages 部署仓库并推送（触发 Actions 自动发布）
+.\scripts\sync-pages.ps1
+```
+
+> GitHub Pages 的发布源只支持仓库根目录或 `/docs`，无法直接发布 `/web`，
+> 因此用独立部署仓库承载前端文件，由 `.github/workflows/deploy-pages.yml`
+> 自动发布。首次创建 Pages 站点需用有权限的令牌执行：
+> `gh api -X POST repos/<owner>/<repo>/pages -f "build_type=workflow"`
+
 ---
 
 ## 知识库增量更新
