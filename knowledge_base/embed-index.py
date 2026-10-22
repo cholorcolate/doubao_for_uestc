@@ -19,7 +19,9 @@ import json
 import os
 import time
 
-# 国内 HuggingFace 镜像（若用户已自行设置则尊重用户配置）
+# 离线模式：模型已缓存在本地，跳过 huggingface.co 联网检查（否则启动时反复超时重试）
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 import chromadb

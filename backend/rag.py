@@ -20,7 +20,17 @@ RAG 核心模块：混合检索（向量 + BM25）+ Rerank + 大模型生成
 import os
 import re
 import sqlite3
+import threading
 from pathlib import Path
+
+# 离线模式（模型已缓存在本地，避免启动时联网检查 huggingface.co）
+# 注意：HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE 在 huggingface_hub 被 import 时
+# 就已固化为模块常量，因此必须在任何 sentence_transformers 导入之前设置。
+# 若放在 embedder 属性方法体内，会晚于 import 而完全失效，
+# 导致启动时对 huggingface.co 反复重试超时（冷启动阻塞数分钟）。
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 # 项目根目录（backend 的上一级）
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -151,32 +161,35 @@ class RagEngine:
         self._embedder = None
         self._collection = None
         self._ftsOk = None  # None=未检查, False=索引不存在
+        # 懒加载锁：预热线程与请求线程可能并发进入同一属性，
+        # 不加锁会重复加载模型（实测内存从 448MB 涨到 1688MB）
+        self._embedderLock = threading.Lock()
+        self._collectionLock = threading.Lock()
 
     @property
     def embedder(self):
         """懒加载本地向量模型"""
         if self._embedder is None:
-            # 离线模式：模型已在本地缓存，跳过对 huggingface.co 的联网检查
-            # （联网会因 SSL 证书问题反复重试，导致预热卡住数分钟）
-            os.environ.setdefault("HF_HUB_OFFLINE", "1")
-            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-            from sentence_transformers import SentenceTransformer
+            with self._embedderLock:
+                if self._embedder is None:
+                    from sentence_transformers import SentenceTransformer
 
-            print("加载向量模型...")
-            self._embedder = SentenceTransformer(EMBED_MODEL)
-            print("向量模型加载完成")
+                    print("加载向量模型...")
+                    self._embedder = SentenceTransformer(EMBED_MODEL)
+                    print("向量模型加载完成")
         return self._embedder
 
     @property
     def collection(self):
         """懒加载向量库"""
         if self._collection is None:
-            import chromadb
+            with self._collectionLock:
+                if self._collection is None:
+                    import chromadb
 
-            client = chromadb.PersistentClient(path=CHROMA_PATH)
-            self._collection = client.get_collection(COLLECTION_NAME)
-            print(f"向量库加载完成，共 {self._collection.count()} 条")
+                    client = chromadb.PersistentClient(path=CHROMA_PATH)
+                    self._collection = client.get_collection(COLLECTION_NAME)
+                    print(f"向量库加载完成，共 {self._collection.count()} 条")
         return self._collection
 
     @property

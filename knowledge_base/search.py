@@ -15,6 +15,8 @@ import sys
 sys.stdout.reconfigure(errors="replace")
 sys.stderr.reconfigure(errors="replace")
 
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 import chromadb
