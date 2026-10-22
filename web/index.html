@@ -146,6 +146,20 @@ svg{display:block}
 .tool-result .feed-list{min-height:60px}
 
 /* ===== 我的 ===== */
+.conn-box{margin-top:22px;border:1px solid var(--line);border-radius:12px;background:rgba(45,108,223,0.06);overflow:hidden}
+.conn-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 16px;font-size:13.5px;color:var(--text-2);cursor:pointer;user-select:none}
+.conn-head:hover{color:var(--text)}
+.conn-head .state{flex:none;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--text-3)}
+.conn-head .state.ok{color:#3ddc84;border-color:rgba(61,220,132,.45);background:rgba(61,220,132,.1)}
+.conn-head .state.bad{color:#ff6b6b;border-color:rgba(255,107,107,.45);background:rgba(255,107,107,.1)}
+.conn-body{padding:2px 16px 15px}
+.conn-body input{width:100%;font-family:inherit;font-size:13px;color:var(--text);background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:9px 12px;outline:none;margin-bottom:10px}
+.conn-body input:focus{border-color:var(--primary)}
+.conn-actions{display:flex;gap:8px;flex-wrap:wrap}
+.conn-actions button{font-size:12.5px;color:var(--text-2);background:rgba(45,108,223,.12);border:1px solid rgba(45,108,223,.35);border-radius:999px;padding:7px 16px;transition:all .2s}
+.conn-actions button:hover{color:#fff;border-color:var(--primary)}
+.conn-actions button.ghost{background:transparent;border-color:var(--line)}
+.conn-tip{font-size:12px;color:var(--text-3);line-height:1.75;margin-top:10px;word-break:break-all}
 .mine-tabs{display:flex;gap:8px;justify-content:center;margin-bottom:16px}
 .mtab{font-size:13px;color:var(--text-2);background:rgba(45,108,223,0.1);border:1px solid var(--line);border-radius:999px;padding:7px 22px;transition:all .2s}
 .mtab:hover{color:#fff;border-color:var(--primary)}
@@ -284,6 +298,24 @@ svg{display:block}
           </div>
           <div id="mineFav"><div class="empty">加载中…</div></div>
           <div id="mineSub" hidden></div>
+
+          <div class="conn-box">
+            <div class="conn-head" id="connToggle">
+              <span>后端连接</span>
+              <span class="state" id="connState">检测中…</span>
+            </div>
+            <div class="conn-body" id="connBody" hidden>
+              <input type="text" id="apiBaseInput" placeholder="http://localhost:8000" spellcheck="false" />
+              <div class="conn-actions">
+                <button id="apiBaseSave">保存并重连</button>
+                <button id="apiBaseReset" class="ghost">恢复默认</button>
+              </div>
+              <div class="conn-tip" id="connTip">
+                本页面部署在 GitHub Pages（https），浏览器豁免 localhost 的混合内容限制，因此可直接访问本机后端。
+                若后端端口有变或改用隧道地址，在此修改即可。
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -302,6 +334,29 @@ svg{display:block}
   "use strict";
 
   /* ===== 通用工具 ===== */
+
+  /* 后端地址：GitHub Pages 是 https 站点，本地后端是 http，
+     浏览器豁免 loopback（localhost/127.0.0.1）混合内容，故可直接直连。
+     可通过 ?api=<地址> 覆盖并记忆，也可在「我的」页手动修改。 */
+  var API_BASE = (function(){
+    var fallback = "http://127.0.0.1:8000";
+    var saved = "";
+    try {
+      var m = /[?&]api=([^&#]+)/.exec(location.search);
+      if (m) {
+        saved = decodeURIComponent(m[1]);
+        localStorage.setItem("zd_api_base", saved);
+      } else {
+        saved = localStorage.getItem("zd_api_base") || "";
+      }
+    } catch(e){ saved = ""; }
+    return (saved || fallback).replace(/\/+$/, "");
+  })();
+
+  function apiUrl(path){
+    return API_BASE + path;
+  }
+
   function $(id){ return document.getElementById(id); }
   function esc(s){
     return String(s == null ? "" : s)
@@ -405,7 +460,7 @@ svg{display:block}
 
   function loadFeedTabs(){
     feedLoaded = true;
-    fetch("/api/feed/categories").then(function(r){
+    fetch(apiUrl("/api/feed/categories")).then(function(r){
       if (!r.ok) throw new Error("bad status");
       return r.json();
     }).then(function(res){
@@ -427,9 +482,9 @@ svg{display:block}
 
   function loadFeed(){
     $("feedList").innerHTML = '<div class="empty">加载中…</div>';
-    fetch("/api/feed?category=" + encodeURIComponent(feedState.category) +
+    fetch(apiUrl("/api/feed?category=" + encodeURIComponent(feedState.category) +
       "&page=" + feedState.page + "&size=" + feedState.size
-    ).then(function(r){
+    )).then(function(r){
       if (!r.ok) throw new Error("bad status");
       return r.json();
     }).then(function(res){
@@ -471,7 +526,7 @@ svg{display:block}
   /* ===== 校园工具 ===== */
   function loadTools(){
     toolsLoaded = true;
-    fetch("/api/tools").then(function(r){
+    fetch(apiUrl("/api/tools")).then(function(r){
       if (!r.ok) throw new Error("bad status");
       return r.json();
     }).then(function(res){
@@ -499,7 +554,7 @@ svg{display:block}
     card.classList.add("active");
     var id = card.dataset.tool;
     $("toolResult").innerHTML = '<div class="empty">检索中…</div>';
-    fetch("/api/tools/" + encodeURIComponent(id)).then(function(r){
+    fetch(apiUrl("/api/tools/" + encodeURIComponent(id))).then(function(r){
       if (!r.ok) throw new Error("bad status");
       return r.json();
     }).then(function(res){
@@ -566,7 +621,7 @@ svg{display:block}
     $("mineSub").innerHTML = html;
 
     // 板块下拉（排除已订阅）
-    fetch("/api/boards").then(function(r){
+    fetch(apiUrl("/api/boards")).then(function(r){
       if (!r.ok) throw new Error("bad status");
       return r.json();
     }).then(function(res){
@@ -585,7 +640,7 @@ svg{display:block}
     if (!subs.length) return;
     $("subUpdates").innerHTML = '<div class="empty">加载订阅更新…</div>';
     Promise.all(subs.map(function(board){
-      return fetch("/api/feed?board=" + encodeURIComponent(board) + "&size=5")
+      return fetch(apiUrl("/api/feed?board=" + encodeURIComponent(board) + "&size=5"))
         .then(function(r){ return r.json(); })
         .then(function(res){ return { board: board, items: res.items || [] }; })
         .catch(function(){ return { board: board, items: [] }; })
@@ -660,7 +715,7 @@ svg{display:block}
   var timeSel = $("timeSel");
 
   // 加载板块列表（失败时仅保留「全部板块」）
-  fetch("/api/boards").then(function(r){
+  fetch(apiUrl("/api/boards")).then(function(r){
     if (!r.ok) throw new Error("bad status");
     return r.json();
   }).then(function(res){
@@ -740,7 +795,7 @@ svg{display:block}
     addMsg("user", esc(text));
     input.value = "";
     showTyping();
-    fetch("/api/chat", {
+    fetch(apiUrl("/api/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -768,6 +823,52 @@ svg{display:block}
     var b = e.target.closest(".quick");
     if (b) send(b.getAttribute("data-q"));
   });
+
+  /* ===== 后端连接设置 ===== */
+  function setApiBase(v){
+    API_BASE = (v || "http://localhost:8000").replace(/\/+$/, "");
+    try { localStorage.setItem("zd_api_base", API_BASE); } catch(e){}
+    var inp = $("apiBaseInput");
+    if (inp) inp.value = API_BASE;
+  }
+
+  function checkConn(){
+    var st = $("connState"), tip = $("connTip");
+    if (!st) return;
+    st.className = "state";
+    st.textContent = "检测中…";
+    fetch(apiUrl("/api/health"), { cache:"no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        st.className = "state ok";
+        st.textContent = "已连接";
+        if (tip) tip.textContent = "后端 " + API_BASE + " · 知识库条目 " +
+          (j.count != null ? j.count : "?") + " · LLM " + (j.llm ? "可用" : "未配置");
+      })
+      .catch(function(){
+        st.className = "state bad";
+        st.textContent = "未连接";
+        if (tip) tip.textContent = "无法连接 " + API_BASE +
+          "。请确认后端已启动（默认 http://localhost:8000），或在上方修改地址。";
+      });
+  }
+
+  $("connToggle").addEventListener("click", function(){
+    $("connBody").hidden = !$("connBody").hidden;
+  });
+  $("apiBaseSave").addEventListener("click", function(){
+    setApiBase($("apiBaseInput").value);
+    checkConn();
+  });
+  $("apiBaseReset").addEventListener("click", function(){
+    setApiBase("http://127.0.0.1:8000");
+    checkConn();
+  });
+  $("apiBaseInput").addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ setApiBase(e.target.value); checkConn(); }
+  });
+  $("apiBaseInput").value = API_BASE;
+  checkConn();
 })();
 </script>
 </body>
