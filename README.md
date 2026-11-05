@@ -261,8 +261,21 @@ C:\soft\python\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 ### 前端 GitHub Pages 部署
 
-前端为单文件应用（`web/index.html`），可独立部署到 GitHub Pages，
-页面通过浏览器直连本地后端 `http://127.0.0.1:8000`。
+前端是纯静态无构建的项目，全部代码在 [`frontend/`](frontend/README.md)：
+
+```
+frontend/
+├── index.html          # 页面结构
+├── config.js           # 运行时配置（后端地址）
+└── assets/
+    ├── style.css       # 样式
+    └── app.js          # 交互逻辑
+```
+
+前后端通过 HTTP 解耦：前端不 import 任何后端代码，只依赖 6 个 `/api/*` 接口。
+接口契约、字段说明、请求响应示例见 **[frontend/README.md](frontend/README.md)**。
+
+页面默认直连本地后端 `http://127.0.0.1:8000`。
 
 > 混合内容说明：GitHub Pages 是 https，本地后端是 http，但浏览器对
 > `127.0.0.1`/`localhost` 有 loopback 豁免，故可直接跨域访问。
@@ -270,7 +283,13 @@ C:\soft\python\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 站点地址：<https://linduer.github.io/doubao_for_uestc/>
 
-**后端地址可临时覆盖**（页面会记住选择）：
+**后端地址的三层优先级**（改 `frontend/config.js` 可改默认值）：
+
+```
+?api=<地址>  >  浏览器已保存的地址  >  config.js 里的 apiBase
+```
+
+临时覆盖示例（页面会记住选择）：
 
 ```
 https://linduer.github.io/doubao_for_uestc/?api=http://192.168.1.10:8000
@@ -281,8 +300,8 @@ https://linduer.github.io/doubao_for_uestc/?api=http://192.168.1.10:8000
 **发布流程**：
 
 ```powershell
-# 1. 修改主仓库的 web/index.html 后提交
-git add web/index.html
+# 1. 修改 frontend/ 下的文件后提交
+git add frontend
 git commit -m "feat: 更新前端"
 git push
 
@@ -290,9 +309,8 @@ git push
 .\scripts\sync-pages.ps1
 ```
 
-> GitHub Pages 的发布源只支持仓库根目录或 `/docs`，无法直接发布 `/web`，
-> 因此用独立部署仓库承载前端文件，由 `.github/workflows/deploy-pages.yml`
-> 自动发布。首次创建 Pages 站点需用有权限的令牌执行：
+> `.github/workflows/deploy-pages.yml` 会在 `frontend/**` 变更时自动上传该目录
+> 并发布。首次创建 Pages 站点需用有权限的令牌执行：
 > `gh api -X POST repos/<owner>/<repo>/pages -f "build_type=workflow"`
 
 ---

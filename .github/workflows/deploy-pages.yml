@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'web/**'
+      - 'frontend/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -36,7 +36,7 @@ jobs:
       - name: 上传静态站点
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'web'
+          path: 'frontend'
 
       - name: 部署到 GitHub Pages
         id: deployment

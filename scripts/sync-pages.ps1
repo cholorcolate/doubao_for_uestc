@@ -2,7 +2,7 @@
     同步前端静态文件到 GitHub Pages 部署仓库
 
     背景：GitHub Pages 的发布源只支持仓库根目录或 /docs，不能直接发布 /web，
-    因此另建一个专用部署仓库存放 web/ 下的静态文件。本脚本负责把主仓库的
+    因此另建一个专用部署仓库存放 frontend/ 下的静态文件。本脚本负责把主仓库的
     前端文件复制过去并推送，触发 Actions 自动发布。
 
     用法：
@@ -22,10 +22,10 @@ $ErrorActionPreference = "Continue"
 
 # 定位项目根目录（脚本所在目录的上级）
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$webDir = Join-Path $projectRoot "web"
+$frontendDir = Join-Path $projectRoot "frontend"
 
-if (-not (Test-Path $webDir)) {
-    Write-Host "[错误] 找不到前端目录：$webDir" -ForegroundColor Red
+if (-not (Test-Path $frontendDir)) {
+    Write-Host "[错误] 找不到前端目录：$frontendDir" -ForegroundColor Red
     exit 1
 }
 if (-not (Test-Path $DeployDir)) {
@@ -33,15 +33,13 @@ if (-not (Test-Path $DeployDir)) {
     exit 1
 }
 
-Write-Host "[信息] 主仓库前端：$webDir" -ForegroundColor Cyan
+Write-Host "[信息] 主仓库前端：$frontendDir" -ForegroundColor Cyan
 Write-Host "[信息] 部署仓库：$DeployDir" -ForegroundColor Cyan
 
-# 复制 index.html 与 web 下的其他静态资源
-Copy-Item (Join-Path $webDir "index.html") -Destination (Join-Path $DeployDir "index.html") -Force
-
-Get-ChildItem -Path $webDir -File | Where-Object { $_.Name -ne "index.html" } | ForEach-Object {
-    Write-Host "[信息] 复制静态资源：$($_.Name)" -ForegroundColor Cyan
-    Copy-Item $_.FullName -Destination (Join-Path $DeployDir $_.Name) -Force
+# 递归复制前端根目录下的全部内容（index.html / config.js / assets/ 等）
+Get-ChildItem -Path $frontendDir -Force | ForEach-Object {
+    Write-Host "[信息] 复制：$($_.Name)" -ForegroundColor Cyan
+    Copy-Item $_.FullName -Destination $DeployDir -Recurse -Force
 }
 
 Push-Location $DeployDir

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成电智答 · 电子科技大学校园智能体</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="bg"></div>
+  <div class="veil"></div>
+  <div class="content">
+
+    <div class="bar">
+      <span class="brand">
+        <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg>
+        成电智答
+      </span>
+      <nav class="nav" id="nav">
+        <button class="nav-btn active" data-view="chat">智能问答</button>
+        <button class="nav-btn" data-view="feed">信息聚合</button>
+        <button class="nav-btn" data-view="tools">校园工具</button>
+        <button class="nav-btn" data-view="mine">我的</button>
+      </nav>
+    </div>
+
+    <div class="views">
+
+      <!-- ===== 智能问答 ===== -->
+      <section class="view active" id="view-chat">
+        <div class="main">
+          <h1>懂成电的<em>智能体</em></h1>
+          <p class="sub">选课 · 保研 · 校历 · 班车</p>
+
+          <div class="chat-card">
+            <div class="chat-head">
+              <span class="dot"></span>
+              <span class="t">成电智答</span>
+            </div>
+            <div class="msg-area" id="msgArea">
+              <div class="msg bot">
+                <span class="msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg></span>
+                <div class="bubble">你好，可以问我校园政策、办事流程这类问题。</div>
+              </div>
+            </div>
+            <div class="quick-row" id="quickRow">
+              <button class="quick" data-q="保研成绩怎么算？">保研成绩怎么算？</button>
+              <button class="quick" data-q="这学期校历安排">这学期校历安排</button>
+              <button class="quick" data-q="清水河到沙河班车时刻">清水河到沙河班车时刻</button>
+            </div>
+            <div class="filter-row">
+              <select id="boardSel" aria-label="板块筛选">
+                <option value="">全部板块</option>
+              </select>
+              <select id="timeSel" aria-label="时间筛选">
+                <option value="">全部时间</option>
+                <option value="1m">最近一月</option>
+                <option value="3m">最近三月</option>
+                <option value="1y">最近一年</option>
+                <option value="3y">最近三年</option>
+              </select>
+            </div>
+            <div class="input-row">
+              <div class="input-box">
+                <input id="chatInput" type="text" placeholder="输入你的问题…" autocomplete="off">
+                <button class="send-btn" id="sendBtn" aria-label="发送">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 信息聚合 ===== -->
+      <section class="view" id="view-feed">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>信息<em>聚合</em></h2>
+            <span class="pane-sub">通知公告 · 讲座 · 竞赛 · 招聘，来自论坛知识库</span>
+          </div>
+          <div class="feed-tabs" id="feedTabs"></div>
+          <div class="feed-list" id="feedList"><div class="empty">加载中…</div></div>
+          <div class="pager">
+            <button id="prevPage">上一页</button>
+            <span id="pageInfo"></span>
+            <button id="nextPage">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 校园工具 ===== -->
+      <section class="view" id="view-tools">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>校园<em>工具</em></h2>
+            <span class="pane-sub">校历 · 班车 · 课表 · 场馆，资料来自知识库检索</span>
+          </div>
+          <div class="tool-grid" id="toolGrid"><div class="empty">加载中…</div></div>
+          <div class="tool-result" id="toolResult"></div>
+        </div>
+      </section>
+
+      <!-- ===== 我的 ===== -->
+      <section class="view" id="view-mine">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>我的<em>收藏</em></h2>
+            <span class="pane-sub">收藏与订阅保存在本浏览器，无需登录</span>
+          </div>
+          <div class="mine-tabs">
+            <button class="mtab active" data-mine="fav">收藏</button>
+            <button class="mtab" data-mine="sub">订阅</button>
+          </div>
+          <div id="mineFav"><div class="empty">加载中…</div></div>
+          <div id="mineSub" hidden></div>
+
+          <div class="conn-box">
+            <div class="conn-head" id="connToggle">
+              <span>后端连接</span>
+              <span class="state" id="connState">检测中…</span>
+            </div>
+            <div class="conn-body" id="connBody" hidden>
+              <input type="text" id="apiBaseInput" placeholder="http://localhost:8000" spellcheck="false" />
+              <div class="conn-actions">
+                <button id="apiBaseSave">保存并重连</button>
+                <button id="apiBaseReset" class="ghost">恢复默认</button>
+              </div>
+              <div class="conn-tip" id="connTip">
+                本页面部署在 GitHub Pages（https），浏览器豁免 localhost 的混合内容限制，因此可直接访问本机后端。
+                若后端端口有变或改用隧道地址，在此修改即可。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="foot">
+      <div class="motto">求实求真 · 大气大为</div>
+      <div class="note">本地运行 · 数据来自清水河畔论坛知识库</div>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -7,6 +7,8 @@
 """
 
 import sqlite3
+import threading
+import time
 
 from rag import FTS_DB_PATH
 
@@ -35,6 +37,34 @@ CATEGORIES = {
 }
 
 SNIPPET_CHARS = 150  # 列表摘要最大字数
+CACHE_TTL = 300      # 列表缓存秒数；知识库增量更新需重启服务，故 5 分钟足够安全
+CACHE_MAX_ITEMS = 256  # 缓存键上限，超出时整体清空，避免无限增长
+
+_cache = {}
+_cacheLock = threading.Lock()
+
+
+def _cacheGet(key):
+    """读取未过期的缓存结果"""
+    now = time.monotonic()
+    with _cacheLock:
+        item = _cache.get(key)
+    if not item:
+        return None
+    savedAt, value = item
+    if now - savedAt > CACHE_TTL:
+        with _cacheLock:
+            _cache.pop(key, None)
+        return None
+    return value
+
+
+def _cachePut(key, value):
+    """写入缓存；键过多时整体清空（信息流缓存可随时重建）"""
+    with _cacheLock:
+        if len(_cache) >= CACHE_MAX_ITEMS:
+            _cache.clear()
+        _cache[key] = (time.monotonic(), value)
 
 # 官方源识别表：tid 前缀 official_{key} -> 站点信息
 # infoPattern 为单篇链接模板（{id} 占位），无单篇链接的源退回 home 首页
@@ -114,6 +144,12 @@ def queryFeed(category=None, board=None, page=1, size=20):
     if not FTS_DB_PATH.exists():
         return {"items": [], "total": 0, "page": page, "size": size}
 
+    board = board or None
+    cacheKey = (category, board, page, size)
+    cached = _cacheGet(cacheKey)
+    if cached is not None:
+        return cached
+
     where, params = buildWhere(category, board)
     conn = sqlite3.connect(str(FTS_DB_PATH), timeout=5)
     try:
@@ -143,4 +179,19 @@ def queryFeed(category=None, board=None, page=1, size=20):
             "time": (createTime or "")[:10],
             "snippet": (text or "").replace("\n", " ")[:SNIPPET_CHARS],
         })
-    return {"items": items, "total": total, "page": page, "size": size}
+    result = {"items": items, "total": total, "page": page, "size": size}
+    _cachePut(cacheKey, result)
+    return result
+
+
+def warmFeed():
+    """预热各分类首页。
+
+    feed 的分类查询需要对 docs 全表做标题 LIKE 扫描（约 0.8 秒/次），
+    启动预热后用户首次打开信息流即可命中缓存，避免等待。
+    """
+    for category in CATEGORIES:
+        try:
+            queryFeed(category, None, 1, 15)
+        except Exception as e:
+            print(f"信息流预热失败（{category}）：{e}")

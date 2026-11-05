@@ -98,6 +98,8 @@ QUERY_STOPWORDS = {
 
 # 时间范围映射（天数），用于 create_time >= cutoff 的字符串比较
 TIME_RANGES = {
+    "1m": "30",
+    "3m": "90",
     "30d": "30",
     "90d": "90",
     "180d": "180",
@@ -113,6 +115,38 @@ SYSTEM_PROMPT = (
     "3. 使用简体中文，回答简洁、分点组织，关键结论后标注来源编号如 [1]；\n"
     "4. 涉及具体时间、金额、政策时提醒以学校最新通知为准。"
 )
+
+# 复用 HTTP 客户端：问答链路的生成与精排都走远程 API，
+# 每次新建连接需重复 TLS 握手，复用后单次问答可省数十到数百毫秒。
+_openaiClient = None
+_httpSession = None
+_clientLock = threading.Lock()
+
+
+def _getOpenAIClient():
+    """惰性创建并复用 OpenAI 客户端（线程安全）"""
+    global _openaiClient
+    if _openaiClient is None:
+        with _clientLock:
+            if _openaiClient is None:
+                from openai import OpenAI
+
+                _openaiClient = OpenAI(
+                    api_key=API_KEY, base_url=BASE_URL, timeout=LLM_TIMEOUT
+                )
+    return _openaiClient
+
+
+def _getHttpSession():
+    """惰性创建并复用 requests 会话（连接池）"""
+    global _httpSession
+    if _httpSession is None:
+        with _clientLock:
+            if _httpSession is None:
+                import requests
+
+                _httpSession = requests.Session()
+    return _httpSession
 
 
 def buildTimeCutoff(timeRange: str):
@@ -150,17 +184,22 @@ class RagEngine:
     """RAG 引擎：混合检索 + Rerank + 生成（单例，模型只加载一次）"""
 
     _instance = None
+    _instanceLock = threading.Lock()
 
     @classmethod
     def instance(cls) -> "RagEngine":
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instanceLock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self):
         self._embedder = None
         self._collection = None
         self._ftsOk = None  # None=未检查, False=索引不存在
+        # 最近一次生成失败原因：供降级提示与健康检查展示真实状态
+        self.lastLlmError = None
         # 懒加载锁：预热线程与请求线程可能并发进入同一属性，
         # 不加锁会重复加载模型（实测内存从 448MB 涨到 1688MB）
         self._embedderLock = threading.Lock()
@@ -352,16 +391,15 @@ class RagEngine:
         return deduped
 
     def _rerank(self, question: str, hits: list) -> list:
-        """调用硅基流动 Rerank 精排；失败返回 None（由调用方降级为 RRF 序）"""
-        if not API_KEY or not hits:
+        """调用 Rerank 精排；失败返回 None（由调用方降级为 RRF 序）
+        RERANK_MODEL 为空表示当前服务商未提供 rerank 接口，直接跳过不发请求"""
+        if not API_KEY or not hits or not RERANK_MODEL:
             return None
         try:
-            import requests
-
             documents = [
                 f"{h['title']}\n{h['board_name']}\n{h['text']}" for h in hits
             ]
-            resp = requests.post(
+            resp = _getHttpSession().post(
                 f"{BASE_URL}/rerank",
                 headers={"Authorization": f"Bearer {API_KEY}"},
                 json={
@@ -449,12 +487,12 @@ class RagEngine:
 
     def _generate(self, question: str, hits: list):
         """调用硅基流动生成回答，失败返回 None（由调用方降级）"""
+        self.lastLlmError = None
         if not API_KEY:
+            self.lastLlmError = "未配置 SILICONFLOW_API_KEY"
             print("未配置 SILICONFLOW_API_KEY，跳过生成")
             return None
         try:
-            from openai import OpenAI
-
             blocks = []
             for i, hit in enumerate(hits, 1):
                 timeStr = (hit["create_time"] or "")[:10]
@@ -465,7 +503,7 @@ class RagEngine:
                 )
             userPrompt = "【参考资料】\n" + "\n\n".join(blocks) + f"\n\n【问题】\n{question}"
 
-            client = OpenAI(api_key=API_KEY, base_url=BASE_URL, timeout=LLM_TIMEOUT)
+            client = _getOpenAIClient()
             resp = client.chat.completions.create(
                 model=MODEL,
                 messages=[
@@ -478,8 +516,19 @@ class RagEngine:
             content = (resp.choices[0].message.content or "").strip()
             return content or None
         except Exception as e:
+            self.lastLlmError = str(e)
             print(f"大模型生成失败，降级为检索原文：{e}")
             return None
+
+    def _llmErrorHint(self) -> str:
+        """把生成失败原因转成简短中文提示，避免把完整异常抛给用户"""
+        err = self.lastLlmError or ""
+        low = err.lower()
+        if "402" in err or "balance" in low or "insufficient" in low:
+            return "（账户余额不足）"
+        if "未配置" in err:
+            return "（未配置 API Key）"
+        return "（服务暂时不可用）"
 
     def answer(self, question: str, board=None, timeRange=None) -> dict:
         """完整 RAG 流程：混合检索 -> Rerank -> 生成 -> 结果（兼容前端字段）"""
@@ -509,9 +558,12 @@ class RagEngine:
         if generated:
             answerText = generated
         else:
-            # 降级：直接展示检索原文
+            # 降级：直接展示检索原文，并说明真实原因（未配置 / 余额不足 / 服务异常）
             parts = [f"【{h['board_name']}】{h['title']}\n{h['text']}" for h in hits[:2]]
-            answerText = "未配置大模型，以下是检索到的原文：\n\n" + "\n\n".join(parts)
+            answerText = (
+                f"大模型生成不可用{self._llmErrorHint()}，以下是检索到的原文：\n\n"
+                + "\n\n".join(parts)
+            )
 
         primary = hits[0]
         return {
