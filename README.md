@@ -309,9 +309,13 @@ git push
 .\scripts\sync-pages.ps1
 ```
 
-> `.github/workflows/deploy-pages.yml` 会在 `frontend/**` 变更时自动上传该目录
-> 并发布。首次创建 Pages 站点需用有权限的令牌执行：
-> `gh api -X POST repos/<owner>/<repo>/pages -f "build_type=workflow"`
+> **关于 `.github/workflows/deploy-pages.yml`**：它只在**仓库所有者已在该仓库启用
+> Pages** 的前提下有效。主仓库 `cholorcolate/doubao_for_uestc` 没有 Pages 站点，
+> 协作者权限也无法创建，`configure-pages` 会报
+> `Resource not accessible by integration` 而失败——这一步失败不影响代码提交，
+> 线上站点实际由 `scripts/sync-pages.ps1` 同步到 `Linduer/doubao_for_uestc`
+> 后发布。若要让主仓库也自动发布，需仓库所有者执行：
+> `gh api -X POST repos/cholorcolate/doubao_for_uestc/pages -f "build_type=workflow"`
 
 ---
 
