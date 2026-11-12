@@ -26,10 +26,11 @@ python -m http.server 5500
 
 ```
 frontend/
-├── index.html          # 结构（154 行，无内联样式/脚本）
+├── index.html          # 页面结构
 ├── config.js           # 运行时配置：后端地址
 └── assets/
-    ├── style.css       # 全部样式，CSS 变量集中在 :root
+    ├── style.css       # 基础样式
+    ├── forum.css       # 论坛视觉与阅读区布局
     └── app.js          # 全部交互逻辑，单个 IIFE，无依赖
 ```
 
@@ -150,7 +151,7 @@ Content-Type: application/json
 |---|---|
 | `answer` | 回答正文。是 **Markdown 格式的纯文本**（可能含 `##`、`**`、`-` 列表），当前前端按 `white-space: pre-wrap` 原样展示，**不做渲染** |
 | `source` | 首要来源的「板块 · 标题」，仅用于显示一行来源 |
-| `sources` | 全部引用来源，最多 5 条，供「全部来源」折叠面板与收藏使用 |
+| `sources` | 全部引用来源，最多 5 条，在回答下方直接显示原文链接，并供收藏使用 |
 | `sources[].source` | 原文链接（论坛帖为 `bbs.uestc.edu.cn`） |
 | `sources[].similarity` | 向量检索相似度，不是 Rerank 分，未启用精排时可能为 `null` |
 | `sources[].rerankScore` | 精排分数，未启用精排时为 `null` |
@@ -311,7 +312,7 @@ GET /api/tools/{toolId}?topK=8
 | 页面 | 调用的接口 | 触发时机 |
 |---|---|---|
 | 智能问答 | `GET /api/boards` | 页面加载一次，填板块下拉 |
-| | `POST /api/chat` | 点击发送 / 回车 / 快捷问题 |
+| | `POST /api/chat` | 点击发送 / 回车 |
 | 信息聚合 | `GET /api/feed/categories` → `GET /api/feed` | 首次切到该页 |
 | 校园工具 | `GET /api/tools` → `GET /api/tools/{id}` | 首次切到该页 / 点击工具卡片 |
 | 我的 | `GET /api/health` | 页面加载 + 点「保存并重连」 |
@@ -348,10 +349,8 @@ GET /api/tools/{toolId}?topK=8
 1. **`answer` 不渲染 Markdown**。模型返回 `## 标题`、`**加粗**`，页面上就是字面的井号和星号。
    需要引入一个轻量渲染器（或自己写个够用的），并注意 XSS——`answer` 目前是整体 `escape` 后
    放进 `textContent` 的。
-2. **后端不可用时伪装成「知识库未收录」**。`send()` 的 `catch` 会走 `localReply()`，
-   返回硬编码的示例回答，用户无法区分是网络故障还是真的没资料。
-3. **并发提问会乱序**。多个请求各自 `appendChild`，先返回的答案会插在上面；
-   同时 `typingMsg` 这个 id 被重复分配，打字动画会错位到别的气泡。
+2. **后端不可用时显示连接错误**。可在「我的 → 后端连接」查看或修改地址，并重试问题。
+3. **并发提问可能乱序**。多个请求按完成时间追加回答，连续快速提问时需留意对应问题。
 4. **「下一页」没有上界**。`feedState.page++` 不检查 `total`，快速点击会翻到不存在的页码。
 5. **信息流首次加载失败不会重试**。`feedLoaded` 在 fetch 之前就置为 `true`，
    失败后切走再切回不会重新拉取，只能刷新页面。

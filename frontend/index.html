@@ -7,8 +7,9 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap">
 <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="assets/forum.css">
 </head>
-<body>
+<body data-view="chat">
 <div class="page">
   <div class="bg"></div>
   <div class="veil"></div>
@@ -19,37 +20,35 @@
         <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg>
         成电智答
       </span>
-      <nav class="nav" id="nav">
-        <button class="nav-btn active" data-view="chat">智能问答</button>
+    </div>
+
+    <div class="site-hero" id="siteHero"><h1>懂成电的<em>智能体</em></h1><p>选课 · 保研 · 校历 · 班车</p></div>
+    <div class="forum-layout">
+      <aside class="forum-sidebar" aria-label="栏目导航">
+        <div class="forum-sidebar-title">成电智答</div>
+      <nav class="nav" id="nav" aria-label="主导航">
+        <button class="nav-btn active" data-view="chat" aria-current="page">智能问答</button>
         <button class="nav-btn" data-view="feed">信息聚合</button>
         <button class="nav-btn" data-view="tools">校园工具</button>
         <button class="nav-btn" data-view="mine">我的</button>
       </nav>
-    </div>
-
-    <div class="views">
+      </aside>
+      <main class="forum-main">
+        <div class="views">
 
       <!-- ===== 智能问答 ===== -->
       <section class="view active" id="view-chat">
         <div class="main">
-          <h1>懂成电的<em>智能体</em></h1>
-          <p class="sub">选课 · 保研 · 校历 · 班车</p>
 
           <div class="chat-card">
             <div class="chat-head">
-              <span class="dot"></span>
-              <span class="t">成电智答</span>
+              <span class="t">智能问答</span>
             </div>
-            <div class="msg-area" id="msgArea">
+            <div class="msg-area" id="msgArea" role="log" aria-label="问答记录" aria-live="polite" aria-relevant="additions">
               <div class="msg bot">
                 <span class="msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2.8 1.4 5 1.8 7 1.8v8.2c0 4.4-3.4 8-7 10-3.6-2-7-5.6-7-10V4.8c2 0 4.2-.4 7-1.8z"/><path d="M12 6v13M9.5 10h5"/></svg></span>
                 <div class="bubble">你好，可以问我校园政策、办事流程这类问题。</div>
               </div>
-            </div>
-            <div class="quick-row" id="quickRow">
-              <button class="quick" data-q="保研成绩怎么算？">保研成绩怎么算？</button>
-              <button class="quick" data-q="这学期校历安排">这学期校历安排</button>
-              <button class="quick" data-q="清水河到沙河班车时刻">清水河到沙河班车时刻</button>
             </div>
             <div class="filter-row">
               <select id="boardSel" aria-label="板块筛选">
@@ -65,7 +64,7 @@
             </div>
             <div class="input-row">
               <div class="input-box">
-                <input id="chatInput" type="text" placeholder="输入你的问题…" autocomplete="off">
+                <textarea id="chatInput" rows="3" aria-label="输入校园问题" placeholder="输入你的问题…"></textarea>
                 <button class="send-btn" id="sendBtn" aria-label="发送">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
                 </button>
@@ -84,10 +83,10 @@
           </div>
           <div class="feed-tabs" id="feedTabs"></div>
           <div class="feed-list" id="feedList"><div class="empty">加载中…</div></div>
-          <div class="pager">
-            <button id="prevPage">上一页</button>
+          <div class="pager" hidden>
+            <button id="prevPage" disabled>上一页</button>
             <span id="pageInfo"></span>
-            <button id="nextPage">下一页</button>
+            <button id="nextPage" disabled>下一页</button>
           </div>
         </div>
       </section>
@@ -112,19 +111,19 @@
             <span class="pane-sub">收藏与订阅保存在本浏览器，无需登录</span>
           </div>
           <div class="mine-tabs">
-            <button class="mtab active" data-mine="fav">收藏</button>
-            <button class="mtab" data-mine="sub">订阅</button>
+            <button class="mtab active" data-mine="fav" aria-pressed="true">收藏</button>
+            <button class="mtab" data-mine="sub" aria-pressed="false">订阅</button>
           </div>
           <div id="mineFav"><div class="empty">加载中…</div></div>
           <div id="mineSub" hidden></div>
 
           <div class="conn-box">
-            <div class="conn-head" id="connToggle">
+            <button class="conn-head" id="connToggle" type="button" aria-expanded="false" aria-controls="connBody">
               <span>后端连接</span>
               <span class="state" id="connState">检测中…</span>
-            </div>
+            </button>
             <div class="conn-body" id="connBody" hidden>
-              <input type="text" id="apiBaseInput" placeholder="http://localhost:8000" spellcheck="false" />
+              <input type="url" id="apiBaseInput" aria-label="后端地址" placeholder="http://localhost:8000" spellcheck="false" />
               <div class="conn-actions">
                 <button id="apiBaseSave">保存并重连</button>
                 <button id="apiBaseReset" class="ghost">恢复默认</button>
@@ -138,6 +137,8 @@
         </div>
       </section>
 
+        </div>
+      </main>
     </div>
 
     <div class="foot">
